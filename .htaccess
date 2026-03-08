@@ -1,0 +1,7 @@
+DirectoryIndex landing.php index.php
+
+Options -Indexes
+RewriteEngine On
+
+# Clean URL: /mahal/SLUG → mahal.php?slug=SLUG
+RewriteRule ^mahal/([a-zA-Z0-9_\-]+)/?$ mahal.php?slug=$1 [L,QSA]

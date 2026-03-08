@@ -1,0 +1,995 @@
+<?php
+// caste.php — Islamic Caste Certificate Application (final)
+require_once __DIR__ . '/session_bootstrap.php';
+if (!isset($_SESSION['user_id'])) {
+    header('Location: index.php');
+    exit();
+}
+
+require_once __DIR__ . '/db_connection.php';
+$db = get_db_connection();
+if (isset($db['error'])) die($db['error']);
+$conn = $db['conn'];
+
+$user_id = (int)$_SESSION['user_id'];
+
+/* ---------- HANDLE SAVE CHANGES (POST BACK TO SAME FILE) ---------- */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_changes'])) {
+    $request_id = isset($_POST['request_id']) && ctype_digit((string)$_POST['request_id'])
+        ? (int)$_POST['request_id']
+        : 0;
+
+    if ($request_id <= 0) {
+        $conn->close();
+        die('Invalid request ID.');
+    }
+
+    // Collect all form fields into details_json
+    $details = [
+        'applicant_prefix'   => $_POST['applicant_prefix']   ?? 'Mr.',
+        'applicant_name'     => $_POST['applicant_name']     ?? '',
+        'relation_type'      => $_POST['relation_type']      ?? 'Son of',
+        'parent_prefix'      => $_POST['parent_prefix']      ?? 'Mr.',
+        'parent_name'        => $_POST['parent_name']        ?? '',
+        'applicant_dob'      => $_POST['applicant_dob']      ?? '',
+        'applicant_address'  => $_POST['applicant_address']  ?? '',
+        'village_name'       => $_POST['village_name']       ?? '',
+        'taluk_name'         => $_POST['taluk_name']         ?? '',
+        'district_name'      => $_POST['district_name']      ?? '',
+        'state_name'         => $_POST['state_name']         ?? '',
+        'caste_name'         => $_POST['caste_name']         ?? '',
+        'requested_by'       => $_POST['requested_by']       ?? '',
+        'signed_by'          => $_POST['signed_by']          ?? '',
+        'application_date'   => $_POST['application_date']   ?? date('Y-m-d'),
+    ];
+
+    $details_json = json_encode($details, JSON_UNESCAPED_UNICODE);
+
+    $sql = "UPDATE cert_requests
+            SET details_json = ?, updated_at = NOW()
+            WHERE id = ? LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        $conn->close();
+        die('Prepare failed: ' . $conn->error);
+    }
+
+    $stmt->bind_param('si', $details_json, $request_id);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+
+    // Redirect back (GET) to avoid resubmission & show success banner
+    header("Location: caste.php?request_id={$request_id}&saved=1");
+    exit();
+}
+
+/* ---------- Fetch Mahal details ---------- */
+$sql = "SELECT name, address, registration_no FROM register WHERE id = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$res = $stmt->get_result();
+$row = $res->fetch_assoc();
+$stmt->close();
+
+$mahal_name    = $row['name'] ?? '';
+$mahal_address = $row['address'] ?? '';
+$mahal_reg     = $row['registration_no'] ?? '';
+
+/* ---------- Autofill from selected request (if any) ---------- */
+$request_id = null;
+$details    = [];
+
+if (isset($_GET['request_id']) && ctype_digit($_GET['request_id'])) {
+    $request_id = (int)$_GET['request_id'];
+
+    // Ensure the request belongs to this Mahal via members.mahal_id
+    $sql = "
+        SELECT cr.details_json
+        FROM cert_requests cr
+        INNER JOIN members m ON cr.member_id = m.id
+        WHERE cr.id = ? AND m.mahal_id = ?
+        LIMIT 1
+    ";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('ii', $request_id, $user_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($row = $res->fetch_assoc()) {
+        $decoded = json_decode($row['details_json'] ?? '', true);
+        if (is_array($decoded)) {
+            $details = $decoded;
+        }
+    }
+    $stmt->close();
+}
+
+/* Prefill variables from details_json (if present) */
+$applicant_prefix   = $details['applicant_prefix']  ?? 'Mr.';
+$applicant_name     = $details['applicant_name']    ?? '';
+$relation_type      = $details['relation_type']     ?? 'Son of';
+$parent_prefix      = $details['parent_prefix']     ?? 'Mr.';
+$parent_name        = $details['parent_name']       ?? '';
+$applicant_dob      = $details['applicant_dob']     ?? '';
+$applicant_address  = $details['applicant_address'] ?? '';
+
+$village_name       = $details['village_name']      ?? '';
+$taluk_name         = $details['taluk_name']        ?? '';
+$district_name      = $details['district_name']     ?? '';
+$state_name         = $details['state_name']        ?? '';
+$caste_name         = $details['caste_name']        ?? '';
+
+$requested_by       = $details['requested_by']      ?? '';
+$signed_by          = $details['signed_by']         ?? '';
+$application_date   = $details['application_date']  ?? date('Y-m-d');
+
+$conn->close();
+
+// Fetch mahal details for sidebar
+require_once 'db_connection.php';
+$db_result = get_db_connection();
+if (isset($db_result['error'])) {
+    die("Database connection failed: " . $db_result['error']);
+}
+$conn_sidebar = $db_result['conn'];
+
+$sql_mahal = "SELECT name, address, registration_no, email FROM register WHERE id = ?";
+$stmt_mahal = $conn_sidebar->prepare($sql_mahal);
+$stmt_mahal->bind_param("i", $user_id);
+$stmt_mahal->execute();
+$result_mahal = $stmt_mahal->get_result();
+$mahal = $result_mahal->fetch_assoc();
+$stmt_mahal->close();
+$conn_sidebar->close();
+
+// Define logo path
+$logo_path = "logo.jpeg";
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Islamic Caste Certificate — DOCX Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Sidebar and Layout Styles */
+    :root {
+      --primary: #4a6fa5;
+      --primary-dark: #3a5984;
+      --primary-light: #6b8cc0;
+      --secondary: #6bbaa7;
+      --accent: #f18f8f;
+      --text: #2c3e50;
+      --text-light: #7f8c8d;
+      --text-lighter: #bdc3c7;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --card-alt: #f1f5f9;
+      --border: #e2e8f0;
+      --success: #27ae60;
+      --warning: #f59e0b;
+      --error: #e74c3c;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+      --radius: 16px;
+      --radius-sm: 12px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    body.no-scroll {
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      width: 288px;
+      background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      color: white;
+      position: fixed;
+      inset: 0 auto 0 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      box-shadow: 8px 0 32px rgba(0, 0, 0, 0.15);
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    .sidebar-inner {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+
+    .sidebar-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: white;
+      border-radius: var(--radius-sm);
+      padding: 8px;
+      cursor: pointer;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+      backdrop-filter: blur(10px);
+    }
+
+    .sidebar-close:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: rotate(90deg);
+    }
+
+    .profile {
+      padding: 24px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .profile-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--secondary), var(--accent));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 28px;
+      color: white;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .profile-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
+    .profile-avatar i {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
+
+    .profile .name {
+      color: #fff;
+      font-weight: 700;
+      font-size: 18px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+
+    .profile .role {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .menu {
+      padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .menu-btn {
+      appearance: none;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.8);
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      width: 100%;
+      text-align: left;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .menu-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      transform: translateX(4px);
+    }
+
+    .menu-btn.active {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    .menu-btn i {
+      width: 20px;
+      text-align: center;
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    .sidebar-bottom {
+      margin-top: auto;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: none;
+      color: white;
+      padding: 14px 20px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      cursor: button;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: var(--transition);
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 999;
+      backdrop-filter: blur(4px);
+    }
+
+    .sidebar-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Main Content Area */
+    .main {
+      margin-left: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+
+    /* Header Row - UPDATED with right-aligned back button */
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 24px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+    }
+
+    .floating-menu-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+      box-shadow: var(--shadow);
+      flex-shrink: 0;
+      z-index: 2;
+    }
+
+    .floating-menu-btn:hover {
+      background: var(--card-alt);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .back-btn {
+      background: var(--card-alt);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: var(--transition);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .back-btn:hover {
+      background: var(--primary);
+      color: white;
+      transform: translateY(-1px);
+    }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    /* Form Styles */
+    .wrap {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      color: var(--text);
+    }
+
+    .sub {
+      color: var(--text-light);
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--text);
+      margin: 8px 0 6px;
+      font-weight: 600;
+      display: block;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+
+    .readonly-box {
+      background: var(--card-alt);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 18px;
+    }
+
+    .muted {
+      color: var(--text-light);
+      font-size: 13px;
+    }
+
+    .btn {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: var(--text-light);
+    }
+
+    .btn-secondary:hover {
+      background: var(--text);
+    }
+
+    .success-message {
+      background: #d1fae5;
+      padding: 12px;
+      border-radius: 8px;
+      color: #065f46;
+      margin-bottom: 15px;
+    }
+
+    /* Responsive */
+    @media (max-width: 720px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      
+      .header-left {
+        width: 100%;
+        justify-content: space-between;
+      }
+      
+      .header-right {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar {
+        transform: none;
+      }
+
+      .sidebar-overlay {
+        display: none;
+      }
+
+      .main {
+        margin-left: 288px;
+        width: calc(100% - 288px);
+      }
+
+      .floating-menu-btn {
+        display: none !important;
+      }
+
+      .sidebar-close {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1023.98px) {
+      .main {
+        margin-left: 0;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header-row {
+        padding: 16px;
+      }
+      
+      .content-area {
+        padding: 16px;
+      }
+      
+      .card {
+        padding: 20px;
+      }
+      
+      .page-title {
+        font-size: 18px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .back-btn span {
+        display: none;
+      }
+      
+      .back-btn {
+        padding: 10px;
+      }
+      
+      .back-btn i {
+        margin: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar-overlay" id="sidebarOverlay" hidden></div>
+
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-hidden="true" aria-label="Main navigation">
+      <button class="sidebar-close" id="sidebarClose" aria-label="Close menu" type="button">
+        <i class="fas fa-times"></i>
+      </button>
+      <div class="sidebar-inner">
+        <!-- Profile -->
+        <div class="profile" onclick="window.location.href='dashboard.php'">
+          <div class="profile-avatar">
+            <img src="<?php echo htmlspecialchars($logo_path); ?>"
+              alt="<?php echo htmlspecialchars($mahal['name']); ?> Logo"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <i class="fas fa-mosque" style="display: none;"></i>
+          </div>
+          <div class="name"><?php echo htmlspecialchars($mahal['name']); ?></div>
+          <div class="role">Administrator</div>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="menu" role="menu">
+          <button class="menu-btn" type="button" onclick="window.location.href='dashboard.php'">
+            <i class="fas fa-tachometer-alt"></i>
+            <span>Admin Panel</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='finance-tracking.php'">
+            <i class="fas fa-chart-line"></i>
+            <span>Finance Tracking</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='member-management.php'">
+            <i class="fas fa-users"></i>
+            <span>Member Management</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='staff-management.php'">
+            <i class="fas fa-user-tie"></i>
+            <span>Staff Management</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='asset_management.php'">
+            <i class="fas fa-boxes"></i>
+            <span>Asset Management</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='academics.php'">
+            <i class="fas fa-graduation-cap"></i>
+            <span>Academics</span>
+          </button>
+
+          <button class="menu-btn active" type="button" onclick="window.location.href='certificate.php'">
+            <i class="fas fa-certificate"></i>
+            <span>Certificate Management</span>
+          </button>
+
+          <button class="menu-btn" type="button" onclick="window.location.href='mahal_profile.php'">
+            <i class="fas fa-building"></i>
+            <span>Mahal Profile</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <form action="logout.php" method="post" style="margin:0">
+            <button type="submit" class="logout-btn">
+              <i class="fas fa-sign-out-alt"></i>
+              Logout
+            </button>
+          </form>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main" id="main">
+      <!-- Header with Back Button on Right Side -->
+      <div class="header-row">
+        <div class="header-left">
+          <button class="floating-menu-btn" id="menuToggle" aria-controls="sidebar" aria-expanded="false"
+            aria-label="Open menu" type="button">
+            <i class="fas fa-bars"></i>
+          </button>
+          
+          <div class="page-title">
+             Caste Certificate
+          </div>
+        </div>
+        
+        <div class="header-right">
+          <a href="certificate.php" class="back-btn">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Certificates</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="content-area">
+        <div class="wrap">
+          <div class="card">
+            <h1>Islamic Caste Certificate — Application</h1>
+            <div class="sub">Issuer details are auto-fetched from your Mahal profile.</div>
+
+            <?php if (isset($_GET['saved'])): ?>
+              <div class="success-message">
+                <i class="fas fa-check-circle"></i> Changes saved successfully.
+              </div>
+            <?php endif; ?>
+
+            <div class="readonly-box">
+              <strong><?php echo htmlspecialchars($mahal_name); ?></strong><br>
+              <span class="muted"><?php echo nl2br(htmlspecialchars($mahal_address)); ?></span><br>
+              <span class="muted">REG. NO: <?php echo htmlspecialchars($mahal_reg); ?></span>
+            </div>
+
+            <!-- Default action = this same file (for Save). Generate button overrides via formaction. -->
+            <form method="post" action="">
+              <?php if ($request_id !== null): ?>
+                <input type="hidden" name="request_id" value="<?php echo (int)$request_id; ?>">
+              <?php endif; ?>
+
+              <div class="grid">
+
+                <div class="full"><h3>Applicant Details</h3></div>
+
+                <div>
+                  <label>Applicant Prefix *</label>
+                  <select name="applicant_prefix" required>
+                    <option value="Mr."   <?php if ($applicant_prefix === 'Mr.')   echo 'selected'; ?>>Mr.</option>
+                    <option value="Mrs."  <?php if ($applicant_prefix === 'Mrs.')  echo 'selected'; ?>>Mrs.</option>
+                    <option value="Miss." <?php if ($applicant_prefix === 'Miss.') echo 'selected'; ?>>Miss.</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Applicant Full Name *</label>
+                  <input type="text" name="applicant_name" required maxlength="190"
+                         value="<?php echo htmlspecialchars($applicant_name); ?>" />
+                </div>
+
+                <div>
+                  <label>Relation Type *</label>
+                  <select name="relation_type" required>
+                    <option value="Son of"      <?php if ($relation_type === 'Son of')      echo 'selected'; ?>>Son of</option>
+                    <option value="Daughter of" <?php if ($relation_type === 'Daughter of') echo 'selected'; ?>>Daughter of</option>
+                    <option value="Guardian of" <?php if ($relation_type === 'Guardian of') echo 'selected'; ?>>Guardian of</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Parent Prefix *</label>
+                  <select name="parent_prefix" required>
+                    <option value="Mr."  <?php if ($parent_prefix === 'Mr.')  echo 'selected'; ?>>Mr.</option>
+                    <option value="Mrs." <?php if ($parent_prefix === 'Mrs.') echo 'selected'; ?>>Mrs.</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label>Parent / Guardian Name *</label>
+                  <input type="text" name="parent_name" required maxlength="190"
+                         value="<?php echo htmlspecialchars($parent_name); ?>" />
+                </div>
+
+                <div>
+                  <label>Date of Birth</label>
+                  <input type="date" name="applicant_dob"
+                         value="<?php echo htmlspecialchars($applicant_dob); ?>" />
+                </div>
+
+                <div class="full">
+                  <label>Applicant Address *</label>
+                  <textarea name="applicant_address" rows="2" required><?php
+                    echo htmlspecialchars($applicant_address);
+                  ?></textarea>
+                </div>
+
+                <div class="full"><h3>Location Details</h3></div>
+
+                <div>
+                  <label>Village / Locality *</label>
+                  <input type="text" name="village_name" required maxlength="150"
+                         value="<?php echo htmlspecialchars($village_name); ?>" />
+                </div>
+
+                <div>
+                  <label>Taluk / Tehsil *</label>
+                  <input type="text" name="taluk_name" required maxlength="150"
+                         value="<?php echo htmlspecialchars($taluk_name); ?>" />
+                </div>
+
+                <div>
+                  <label>District *</label>
+                  <input type="text" name="district_name" required maxlength="150"
+                         value="<?php echo htmlspecialchars($district_name); ?>" />
+                </div>
+
+                <div>
+                  <label>State *</label>
+                  <input type="text" name="state_name" required maxlength="150"
+                         value="<?php echo htmlspecialchars($state_name); ?>" />
+                </div>
+
+                <div class="full">
+                  <label>Caste / Community *</label>
+                  <input type="text" name="caste_name" required maxlength="150"
+                         value="<?php echo htmlspecialchars($caste_name); ?>" />
+                </div>
+
+                <div>
+                  <label>Requested By *</label>
+                  <input type="text" name="requested_by" required maxlength="120"
+                         value="<?php echo htmlspecialchars($requested_by); ?>" />
+                </div>
+
+                <div>
+                  <label>Signed By (President/Secretary) *</label>
+                  <input type="text" name="signed_by" required maxlength="120"
+                         value="<?php echo htmlspecialchars($signed_by); ?>" />
+                </div>
+
+                <div>
+                  <label>Application Date *</label>
+                  <input type="date" name="application_date" required
+                         value="<?php echo htmlspecialchars($application_date); ?>" />
+                </div>
+
+              </div>
+
+              <div style="margin-top:20px; display:flex; gap:10px;">
+                <!-- Save back to cert_requests.details_json in this same file -->
+                <button class="btn" type="submit" name="save_changes" value="1">
+                  <i class="fas fa-save"></i> Save Changes
+                </button>
+
+                <!-- Generate DOCX using external generator -->
+                <button class="btn btn-secondary" type="submit"
+                        formaction="generate_cast_certificate.php"
+                        name="generate_cast" value="1">
+                  <i class="fas fa-file-word"></i> Generate Caste Certificate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Sidebar functionality
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const toggle = document.getElementById('menuToggle');
+    const closeBtn = document.getElementById('sidebarClose');
+
+    function openSidebar() {
+      sidebar.classList.add('open');
+      overlay.classList.add('show');
+      overlay.hidden = false;
+      document.body.classList.add('no-scroll');
+      toggle.setAttribute('aria-expanded', 'true');
+      sidebar.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+      document.body.classList.remove('no-scroll');
+      toggle.setAttribute('aria-expanded', 'false');
+      sidebar.setAttribute('aria-hidden', 'true');
+      setTimeout(() => { overlay.hidden = true; }, 200);
+    }
+
+    toggle.addEventListener('click', () => {
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+
+    closeBtn.addEventListener('click', closeSidebar);
+    overlay.addEventListener('click', closeSidebar);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+    });
+
+    document.querySelectorAll('.menu .menu-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (window.matchMedia('(max-width: 1023.98px)').matches) closeSidebar();
+      });
+    });
+
+    // Set active menu item
+    document.querySelectorAll('.menu-btn').forEach(btn => {
+      if (btn.querySelector('span').textContent === 'Certificate Management') {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Prevent form resubmission on page refresh
+    if (window.history.replaceState) {
+      window.history.replaceState(null, null, window.location.href);
+    }
+  </script>
+</body>
+</html>

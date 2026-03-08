@@ -1,0 +1,12 @@
+:root{
+  --bg: #fafafa;
+  --panel: #f3f2f1;
+  --muted: #605e5c;
+  --accent: #7a60ff;
+  --primary: #323130;
+  --card: #ffffff;
+  --stat: #ace6f5;
+}
+
+/* Intentionally minimal: only root theme variables in this file.
+   All layout and dashboard-specific styles are in assets/dashboard.css. */
