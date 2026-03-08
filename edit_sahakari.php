@@ -32,7 +32,7 @@ try {
         $stmt->bind_param("i", $user_id);
         $stmt->execute();
         $result = $stmt->get_result();
-        
+
         if ($result->num_rows > 0) {
             $mahal = $result->fetch_assoc();
             $mahal_name = $mahal['name'];
@@ -45,37 +45,53 @@ try {
 }
 
 /* ---------------- Validation helpers (server-side) ---------------- */
-function normalize_doc_number($s) {
-    return strtoupper(preg_replace('/\s+/', '', (string)$s));
+function normalize_doc_number($s)
+{
+    return strtoupper(preg_replace('/\s+/', '', (string) $s));
 }
-function validate_doc_by_type($type, $number) {
+function validate_doc_by_type($type, $number)
+{
     $t = strtolower($type ?? '');
     $n = normalize_doc_number($number ?? '');
     switch ($t) {
-        case 'aadhaar':          return preg_match('/^\d{12}$/', $n);
-        case 'pan':              return preg_match('/^[A-Z]{5}\d{4}[A-Z]$/', $n);
-        case 'voter id':         return preg_match('/^[A-Z]{3}\d{7}$/', $n);
-        case 'passport':         return preg_match('/^[A-Z][0-9]{7}$/', $n);
-        case "driver's licence": return preg_match('/^[A-Z]{2}\d{2}\s?\d{7,11}$/', $n);
-        case 'ration card':      return preg_match('/^[A-Z0-9]{8,16}$/', $n);
-        case 'birth certificate':return preg_match('/^[A-Z0-9\-\/]{6,20}$/', $n);
-        case 'other':            return strlen($n) >= 4;
-        default:                 return strlen($n) >= 4;
+        case 'aadhaar':
+            return preg_match('/^\d{12}$/', $n);
+        case 'pan':
+            return preg_match('/^[A-Z]{5}\d{4}[A-Z]$/', $n);
+        case 'voter id':
+            return preg_match('/^[A-Z]{3}\d{7}$/', $n);
+        case 'passport':
+            return preg_match('/^[A-Z][0-9]{7}$/', $n);
+        case "driver's licence":
+            return preg_match('/^[A-Z]{2}\d{2}\s?\d{7,11}$/', $n);
+        case 'ration card':
+            return preg_match('/^[A-Z0-9]{8,16}$/', $n);
+        case 'birth certificate':
+            return preg_match('/^[A-Z0-9\-\/]{6,20}$/', $n);
+        case 'other':
+            return strlen($n) >= 4;
+        default:
+            return strlen($n) >= 4;
     }
 }
-function is_valid_indian_phone($s) {
-    $v = preg_replace('/[\s-]+/','', (string)$s);
-    return (bool)preg_match('/^(\+91)?[6-9]\d{9}$/', $v);
+function is_valid_indian_phone($s)
+{
+    $v = preg_replace('/[\s-]+/', '', (string) $s);
+    return (bool) preg_match('/^(\+91)?[6-9]\d{9}$/', $v);
 }
-function not_future_date($str) {
-    if (!$str) return true;
+function not_future_date($str)
+{
+    if (!$str)
+        return true;
     $d = strtotime($str);
-    if ($d === false) return false;
+    if ($d === false)
+        return false;
     return $d <= strtotime('today');
 }
 
 /* ----------- Ensure Sahakari tables exist ----------- */
-function createSahakariTablesIfNotExist($conn) {
+function createSahakariTablesIfNotExist($conn)
+{
     try {
         // sahakari_members
         $check_members = $conn->query("SHOW TABLES LIKE 'sahakari_members'");
@@ -234,13 +250,15 @@ function createSahakariTablesIfNotExist($conn) {
 
 /* --------------------------- API (Update) --------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_sahakari_member') {
-    while (ob_get_level()) { ob_end_clean(); }
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
     ini_set('display_errors', '0');
     ini_set('html_errors', '0');
     header('Content-Type: application/json; charset=utf-8');
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-    $member_id = isset($_POST['member_id']) ? (int)$_POST['member_id'] : 0;
+    $member_id = isset($_POST['member_id']) ? (int) $_POST['member_id'] : 0;
     if ($member_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Invalid member ID.']);
         exit;
@@ -253,12 +271,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     try {
         $db_result = get_db_connection();
-        if (isset($db_result['error'])) throw new Exception("Database connection failed: " . $db_result['error']);
+        if (isset($db_result['error']))
+            throw new Exception("Database connection failed: " . $db_result['error']);
         $conn = $db_result['conn'];
 
         createSahakariTablesIfNotExist($conn);
 
-        $mahal_id = (int)$_SESSION['user_id'];
+        $mahal_id = (int) $_SESSION['user_id'];
 
         // ensure the member belongs to this mahal
         $check = $conn->prepare("SELECT id, address, join_date, head_name FROM sahakari_members WHERE id = ? AND mahal_id = ?");
@@ -267,7 +286,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $res = $check->get_result();
         $exists = $res->fetch_assoc();
         $check->close();
-        if (!$exists) throw new Exception('Member not found or access denied.');
+        if (!$exists)
+            throw new Exception('Member not found or access denied.');
 
         // --------- Gather & validate inputs ----------
         $head_name = isset($_POST['head_name']) ? trim($_POST['head_name']) : '';
@@ -275,27 +295,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $head_email = isset($_POST['head_email']) ? trim($_POST['head_email']) : '';
         $head_phone = isset($_POST['head_phone']) ? trim($_POST['head_phone']) : '';
         $head_address = isset($_POST['head_address']) ? trim($_POST['head_address']) : '';
-        if ($head_name === '') throw new Exception('Head of family name is required.');
-        if ($head_father_name !== null && $head_father_name !== '' && strlen($head_father_name) > 255) throw new Exception('Father name is too long.');
-        if ($head_email === '' || !filter_var($head_email, FILTER_VALIDATE_EMAIL)) throw new Exception('A valid email address is required.');
-        if ($head_phone === '' || !is_valid_indian_phone($head_phone)) throw new Exception('Invalid Indian mobile number.');
-        if ($head_address === '' || strlen($head_address) < 10) throw new Exception('Address must be at least 10 characters.');
+        if ($head_name === '')
+            throw new Exception('Head of family name is required.');
+        if ($head_father_name !== null && $head_father_name !== '' && strlen($head_father_name) > 255)
+            throw new Exception('Father name is too long.');
+        if ($head_email === '' || !filter_var($head_email, FILTER_VALIDATE_EMAIL))
+            throw new Exception('A valid email address is required.');
+        if ($head_phone === '' || !is_valid_indian_phone($head_phone))
+            throw new Exception('Invalid Indian mobile number.');
+        if ($head_address === '' || strlen($head_address) < 10)
+            throw new Exception('Address must be at least 10 characters.');
 
         $head_dob = isset($_POST['head_dob']) && $_POST['head_dob'] !== '' ? $_POST['head_dob'] : null;
-        if ($head_dob && !not_future_date($head_dob)) throw new Exception('Head DOB cannot be in the future.');
+        if ($head_dob && !not_future_date($head_dob))
+            throw new Exception('Head DOB cannot be in the future.');
         $head_gender = isset($_POST['head_gender']) && $_POST['head_gender'] !== '' ? $_POST['head_gender'] : null;
-        if (!$head_gender) throw new Exception('Gender is required.');
+        if (!$head_gender)
+            throw new Exception('Gender is required.');
         $head_occupation = isset($_POST['head_occupation']) && $_POST['head_occupation'] !== '' ? trim($_POST['head_occupation']) : null;
-        if (!$head_occupation) throw new Exception('Occupation is required.');
+        if (!$head_occupation)
+            throw new Exception('Occupation is required.');
         $join_date = isset($_POST['join_date']) && $_POST['join_date'] !== '' ? $_POST['join_date'] : null;
-        if (!$join_date) throw new Exception('Join date is required.');
-        if ($join_date && !not_future_date($join_date)) throw new Exception('Join date cannot be in the future.');
+        if (!$join_date)
+            throw new Exception('Join date is required.');
+        if ($join_date && !not_future_date($join_date))
+            throw new Exception('Join date cannot be in the future.');
 
         $monthly_donation_due = isset($_POST['monthly_donation_due']) ? trim($_POST['monthly_donation_due']) : 'cleared';
-        if (!in_array($monthly_donation_due, ['cleared','due'], true)) throw new Exception('Monthly donation status must be cleared or due.');
+        if (!in_array($monthly_donation_due, ['cleared', 'due'], true))
+            throw new Exception('Monthly donation status must be cleared or due.');
 
         $monthly_fee = isset($_POST['monthly_fee']) && $_POST['monthly_fee'] !== '' ? floatval($_POST['monthly_fee']) : 0.00;
-        if (!is_numeric($monthly_fee) || $monthly_fee < 0) throw new Exception('Monthly fee must be a number ≥ 0.');
+        if (!is_numeric($monthly_fee) || $monthly_fee < 0)
+            throw new Exception('Monthly fee must be a number ≥ 0.');
+
+        // NEW: Monthly Fee Advance
+        $monthly_fee_advance = isset($_POST['monthly_fee_advance']) && $_POST['monthly_fee_advance'] !== '' ? floatval($_POST['monthly_fee_advance']) : 0.00;
+        if (!is_numeric($monthly_fee_advance) || $monthly_fee_advance < 0)
+            throw new Exception('Monthly fee advance must be a number ≥ 0.');
 
         // bulk_print_enabled (default false)
         $bulk_print_enabled = (isset($_POST['bulk_print_enabled']) && $_POST['bulk_print_enabled'] === '1') ? 1 : 0;
@@ -304,11 +341,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if (!isset($_POST['member_number']) || $_POST['member_number'] === '') {
             throw new Exception('Member number is required.');
         }
-        if (!ctype_digit((string)$_POST['member_number'])) {
+        if (!ctype_digit((string) $_POST['member_number'])) {
             throw new Exception('Member number must be a positive integer.');
         }
-        $member_number = (int)$_POST['member_number'];
-        if ($member_number < 1) throw new Exception('Member number must be at least 1.');
+        $member_number = (int) $_POST['member_number'];
+        if ($member_number < 1)
+            throw new Exception('Member number must be at least 1.');
 
         // Get the status from POST data
         $member_status = isset($_POST['member_status']) ? trim($_POST['member_status']) : 'active';
@@ -317,14 +355,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $head_documents = [];
         if (isset($_POST['head_documents'])) {
             $decoded_hd = json_decode($_POST['head_documents'], true);
-            if (is_array($decoded_hd)) $head_documents = $decoded_hd;
+            if (is_array($decoded_hd))
+                $head_documents = $decoded_hd;
         }
 
         // Family JSON
         $family_members = [];
         if (isset($_POST['family_members'])) {
             $decoded = json_decode($_POST['family_members'], true);
-            if (is_array($decoded)) $family_members = $decoded;
+            if (is_array($decoded))
+                $family_members = $decoded;
         }
         $total_members = count($family_members) + 1;
 
@@ -334,35 +374,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $chk->execute();
         $cc = $chk->get_result()->fetch_assoc();
         $chk->close();
-        if ($cc && (int)$cc['c'] > 0) {
+        if ($cc && (int) $cc['c'] > 0) {
             throw new Exception('This member number already exists for your mahal. Please choose another.');
         }
 
         // Validate documents (head + family) + dedupe across all
         $seen_docs = [];
         foreach ($head_documents as $d) {
-            $doc_type   = isset($d['doc_type']) ? trim($d['doc_type']) : '';
+            $doc_type = isset($d['doc_type']) ? trim($d['doc_type']) : '';
             $doc_number = isset($d['doc_number']) ? trim($d['doc_number']) : '';
             if (($doc_type && !$doc_number) || (!$doc_type && $doc_number)) {
                 throw new Exception('Each head document requires both Type and Number.');
             }
-            if (!$doc_type && !$doc_number) continue;
+            if (!$doc_type && !$doc_number)
+                continue;
             if (!validate_doc_by_type($doc_type, $doc_number)) {
                 throw new Exception("Invalid $doc_type number format.");
             }
             $issued_on = isset($d['issued_on']) ? $d['issued_on'] : null;
             $expiry_on = isset($d['expiry_on']) ? $d['expiry_on'] : null;
-            if ($issued_on && !not_future_date($issued_on)) throw new Exception("$doc_type Issued On cannot be in the future.");
+            if ($issued_on && !not_future_date($issued_on))
+                throw new Exception("$doc_type Issued On cannot be in the future.");
             if ($issued_on && $expiry_on && strtotime($expiry_on) < strtotime($issued_on)) {
                 throw new Exception("$doc_type Expiry On cannot be before Issued On.");
             }
-            $key = strtolower($doc_type).'|'.normalize_doc_number($doc_number);
-            if (isset($seen_docs[$key])) throw new Exception("Duplicate $doc_type number across documents.");
+            $key = strtolower($doc_type) . '|' . normalize_doc_number($doc_number);
+            if (isset($seen_docs[$key]))
+                throw new Exception("Duplicate $doc_type number across documents.");
             $seen_docs[$key] = true;
         }
         foreach ($family_members as $fm) {
             $nm = isset($fm['name']) ? trim($fm['name']) : '';
-            if ($nm === '') throw new Exception('Family member name cannot be empty.');
+            if ($nm === '')
+                throw new Exception('Family member name cannot be empty.');
 
             $fphone = isset($fm['phone']) ? trim($fm['phone']) : '';
             if ($fphone !== '' && !is_valid_indian_phone($fphone)) {
@@ -373,7 +417,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 throw new Exception("Family member email is invalid.");
             }
             $fdob = isset($fm['dob']) && $fm['dob'] !== '' ? $fm['dob'] : null;
-            if ($fdob && !not_future_date($fdob)) throw new Exception("Family member DOB cannot be in the future.");
+            if ($fdob && !not_future_date($fdob))
+                throw new Exception("Family member DOB cannot be in the future.");
 
             // father_name validation (new)
             $fm_father_name = isset($fm['father_name']) ? trim($fm['father_name']) : null;
@@ -383,23 +428,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             if (isset($fm['documents']) && is_array($fm['documents'])) {
                 foreach ($fm['documents'] as $d) {
-                    $doc_type   = isset($d['doc_type']) ? trim($d['doc_type']) : '';
+                    $doc_type = isset($d['doc_type']) ? trim($d['doc_type']) : '';
                     $doc_number = isset($d['doc_number']) ? trim($d['doc_number']) : '';
                     if (($doc_type && !$doc_number) || (!$doc_type && $doc_number)) {
                         throw new Exception('Each family document requires both Type and Number.');
                     }
-                    if (!$doc_type && !$doc_number) continue;
+                    if (!$doc_type && !$doc_number)
+                        continue;
                     if (!validate_doc_by_type($doc_type, $doc_number)) {
                         throw new Exception("Invalid $doc_type number format (family).");
                     }
                     $issued_on = isset($d['issued_on']) ? $d['issued_on'] : null;
                     $expiry_on = isset($d['expiry_on']) ? $d['expiry_on'] : null;
-                    if ($issued_on && !not_future_date($issued_on)) throw new Exception("$doc_type Issued On cannot be in the future.");
+                    if ($issued_on && !not_future_date($issued_on))
+                        throw new Exception("$doc_type Issued On cannot be in the future.");
                     if ($issued_on && $expiry_on && strtotime($expiry_on) < strtotime($issued_on)) {
                         throw new Exception("$doc_type Expiry On cannot be before Issued On.");
                     }
-                    $key = strtolower($doc_type).'|'.normalize_doc_number($doc_number);
-                    if (isset($seen_docs[$key])) throw new Exception("Duplicate $doc_type number across head/family documents.");
+                    $key = strtolower($doc_type) . '|' . normalize_doc_number($doc_number);
+                    if (isset($seen_docs[$key]))
+                        throw new Exception("Duplicate $doc_type number across head/family documents.");
                     $seen_docs[$key] = true;
                 }
             }
@@ -410,7 +458,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         // ensure total_due is read & validated
         $total_due = isset($_POST['total_due']) && $_POST['total_due'] !== '' ? floatval($_POST['total_due']) : 0.00;
-        if (!is_numeric($total_due) || $total_due < 0) throw new Exception('Total due must be a number ≥ 0.');
+        if (!is_numeric($total_due) || $total_due < 0)
+            throw new Exception('Total due must be a number ≥ 0.');
 
         // Update member (includes member_number + monthly_fee + status + bulk_print_enabled + father_name)
         $sql = "UPDATE sahakari_members SET 
@@ -429,15 +478,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     monthly_donation_due = ?, 
                     total_due = ?, 
                     monthly_fee = ?, 
+                    monthly_fee_adv = ?,
                     bulk_print_enabled = ?,
                     updated_at = NOW()
                 WHERE id = ? AND mahal_id = ?";
 
         $stmt = $conn->prepare($sql);
-        if (!$stmt) throw new Exception("Prepare failed: " . $conn->error);
+        if (!$stmt)
+            throw new Exception("Prepare failed: " . $conn->error);
 
         // types string constructed to match params exactly:
-        $typeString = "sssssssssisisddiii";
+        $typeString = "sssssssssisisdddiii";
 
         $stmt->bind_param(
             $typeString,
@@ -456,6 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $monthly_donation_due,
             $total_due,
             $monthly_fee,
+            $monthly_fee_advance,
             $bulk_print_enabled,
             $member_id,
             $mahal_id
@@ -464,7 +516,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         try {
             $stmt->execute();
         } catch (mysqli_sql_exception $mx) {
-            if ((int)$conn->errno === 1062) {
+            if ((int) $conn->errno === 1062) {
                 throw new Exception('This member number already exists for your mahal. Please choose another.');
             }
             throw $mx;
@@ -483,7 +535,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $family_sql = "INSERT INTO sahakari_family_members (member_id, name, father_name, relationship, dob, gender, phone, email, status, created_at, updated_at)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
             $family_stmt = $conn->prepare($family_sql);
-            if (!$family_stmt) throw new Exception("Prepare failed for family members: " . $conn->error);
+            if (!$family_stmt)
+                throw new Exception("Prepare failed for family members: " . $conn->error);
 
             foreach ($family_members as $fm) {
                 $fm_name = isset($fm['name']) ? trim($fm['name']) : '';
@@ -495,10 +548,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $fm_email = isset($fm['email']) ? trim($fm['email']) : '';
                 $fm_status = isset($fm['status']) && $fm['status'] !== '' ? trim($fm['status']) : 'active';
 
-                if ($fm_name === '') throw new Exception("Family member name cannot be empty.");
+                if ($fm_name === '')
+                    throw new Exception("Family member name cannot be empty.");
 
                 // bind types: member_id (i), name (s), father_name (s), relationship (s), dob (s), gender (s), phone (s), email (s), status (s)
-                $family_stmt->bind_param("issssssss",
+                $family_stmt->bind_param(
+                    "issssssss",
                     $member_id,
                     $fm_name,
                     $fm_father_name,
@@ -525,21 +580,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             (member_id, family_member_id, owner_type, doc_type, doc_number, name_on_doc, issued_by, issued_on, expiry_on, notes, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
         $doc_stmt = $conn->prepare($doc_sql);
-        if (!$doc_stmt) throw new Exception("Prepare failed for documents: " . $conn->error);
-        $nn = function($v){ return ($v === '' ? null : $v); };
+        if (!$doc_stmt)
+            throw new Exception("Prepare failed for documents: " . $conn->error);
+        $nn = function ($v) {
+            return ($v === '' ? null : $v);
+        };
 
         // Head docs
         foreach ($head_documents as $d) {
-            $doc_type   = isset($d['doc_type']) ? trim($d['doc_type']) : '';
+            $doc_type = isset($d['doc_type']) ? trim($d['doc_type']) : '';
             $doc_number = isset($d['doc_number']) ? trim($d['doc_number']) : '';
-            if (!$doc_type && !$doc_number) continue;
-            if ($doc_type === '' || $doc_number === '') throw new Exception("Head document requires both type and number.");
+            if (!$doc_type && !$doc_number)
+                continue;
+            if ($doc_type === '' || $doc_number === '')
+                throw new Exception("Head document requires both type and number.");
             $owner_type = 'head';
             $name_on_doc = $nn(isset($d['name_on_doc']) ? trim($d['name_on_doc']) : null);
-            $issued_by   = $nn(isset($d['issued_by']) ? trim($d['issued_by']) : null);
-            $issued_on   = $nn(isset($d['issued_on']) ? trim($d['issued_on']) : null);
-            $expiry_on   = $nn(isset($d['expiry_on']) ? trim($d['expiry_on']) : null);
-            $notes       = $nn(isset($d['notes']) ? trim($d['notes']) : null);
+            $issued_by = $nn(isset($d['issued_by']) ? trim($d['issued_by']) : null);
+            $issued_on = $nn(isset($d['issued_on']) ? trim($d['issued_on']) : null);
+            $expiry_on = $nn(isset($d['expiry_on']) ? trim($d['expiry_on']) : null);
+            $notes = $nn(isset($d['notes']) ? trim($d['notes']) : null);
             $family_member_id = null;
 
             $doc_stmt->bind_param(
@@ -560,18 +620,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         // Family docs
         foreach ($family_members as $idx => $fm) {
-            if (!isset($fm['documents']) || !is_array($fm['documents'])) continue;
+            if (!isset($fm['documents']) || !is_array($fm['documents']))
+                continue;
             foreach ($fm['documents'] as $d) {
-                $doc_type   = isset($d['doc_type']) ? trim($d['doc_type']) : '';
+                $doc_type = isset($d['doc_type']) ? trim($d['doc_type']) : '';
                 $doc_number = isset($d['doc_number']) ? trim($d['doc_number']) : '';
-                if (!$doc_type && !$doc_number) continue;
-                if ($doc_type === '' || $doc_number === '') throw new Exception("Family document requires both type and number.");
+                if (!$doc_type && !$doc_number)
+                    continue;
+                if ($doc_type === '' || $doc_number === '')
+                    throw new Exception("Family document requires both type and number.");
                 $owner_type = 'family';
                 $name_on_doc = $nn(isset($d['name_on_doc']) ? trim($d['name_on_doc']) : null);
-                $issued_by   = $nn(isset($d['issued_by']) ? trim($d['issued_by']) : null);
-                $issued_on   = $nn(isset($d['issued_on']) ? trim($d['issued_on']) : null);
-                $expiry_on   = $nn(isset($d['expiry_on']) ? trim($d['expiry_on']) : null);
-                $notes       = $nn(isset($d['notes']) ? trim($d['notes']) : null);
+                $issued_by = $nn(isset($d['issued_by']) ? trim($d['issued_by']) : null);
+                $issued_on = $nn(isset($d['issued_on']) ? trim($d['issued_on']) : null);
+                $expiry_on = $nn(isset($d['expiry_on']) ? trim($d['expiry_on']) : null);
+                $notes = $nn(isset($d['notes']) ? trim($d['notes']) : null);
                 $family_member_id = null;
 
                 $doc_stmt->bind_param(
@@ -590,7 +653,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $doc_stmt->execute();
             }
         }
-        if ($doc_stmt) { $doc_stmt->close(); }
+        if ($doc_stmt) {
+            $doc_stmt->close();
+        }
 
         $conn->commit();
 
@@ -602,11 +667,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
 
     } catch (Exception $e) {
-        if ($conn && !$conn->connect_errno) $conn->rollback();
-        if (isset($doc_stmt) && $doc_stmt) { @$doc_stmt->close(); }
-        if (isset($family_stmt) && $family_stmt) { @$family_stmt->close(); }
-        if (isset($stmt) && $stmt) { @$stmt->close(); }
-        if ($conn) { @$conn->close(); }
+        if ($conn && !$conn->connect_errno)
+            $conn->rollback();
+        if (isset($doc_stmt) && $doc_stmt) {
+            @$doc_stmt->close();
+        }
+        if (isset($family_stmt) && $family_stmt) {
+            @$family_stmt->close();
+        }
+        if (isset($stmt) && $stmt) {
+            @$stmt->close();
+        }
+        if ($conn) {
+            @$conn->close();
+        }
 
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -615,7 +689,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 /* --------------------------- Page (GET) --------------------------- */
-$member_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$member_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($member_id <= 0) {
     header("Location: sahakari_management.php");
     exit();
@@ -628,7 +702,8 @@ $family_documents_by_id = []; // key: family_member_id => [docs...]
 
 try {
     $db_result = get_db_connection();
-    if (isset($db_result['error'])) throw new Exception("Database connection failed: " . $db_result['error']);
+    if (isset($db_result['error']))
+        throw new Exception("Database connection failed: " . $db_result['error']);
     $conn = $db_result['conn'];
 
     createSahakariTablesIfNotExist($conn);
@@ -687,8 +762,9 @@ try {
     $stmt->execute();
     $res = $stmt->get_result();
     while ($row = $res->fetch_assoc()) {
-        $fid = (int)$row['family_member_id'];
-        if (!isset($family_documents_by_id[$fid])) $family_documents_by_id[$fid] = [];
+        $fid = (int) $row['family_member_id'];
+        if (!isset($family_documents_by_id[$fid]))
+            $family_documents_by_id[$fid] = [];
         $family_documents_by_id[$fid][] = $row;
     }
     $stmt->close();
@@ -702,545 +778,684 @@ try {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edit Sahakari Member - <?php echo htmlspecialchars($member['head_name']); ?></title>
-<!-- Font Awesome for icons -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<!-- Add dashboard CSS -->
-<style>
-    /* Dashboard CSS styles */
-    :root {
-        --primary: #4a6fa5;
-        --primary-dark: #3a5984;
-        --primary-light: #6b8cc0;
-        --secondary: #6bbaa7;
-        --accent: #f18f8f;
-        --text: #2c3e50;
-        --text-light: #7f8c8d;
-        --text-lighter: #bdc3c7;
-        --bg: #f8fafc;
-        --card: #ffffff;
-        --card-alt: #f1f5f9;
-        --border: #e2e8f0;
-        --success: #27ae60;
-        --warning: #f59e0b;
-        --error: #e74c3c;
-        --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-        --radius: 16px;
-        --radius-sm: 12px;
-        --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Sahakari Member - <?php echo htmlspecialchars($member['head_name']); ?></title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Add dashboard CSS -->
+    <style>
+        /* Dashboard CSS styles */
+        :root {
+            --primary: #4a6fa5;
+            --primary-dark: #3a5984;
+            --primary-light: #6b8cc0;
+            --secondary: #6bbaa7;
+            --accent: #f18f8f;
+            --text: #2c3e50;
+            --text-light: #7f8c8d;
+            --text-lighter: #bdc3c7;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --card-alt: #f1f5f9;
+            --border: #e2e8f0;
+            --success: #27ae60;
+            --warning: #f59e0b;
+            --error: #e74c3c;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+            --radius: 16px;
+            --radius-sm: 12px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-    * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-    }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-    html, body {
-        height: 100%;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        line-height: 1.6;
-    }
+        html,
+        body {
+            height: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
 
-    body.no-scroll {
-        overflow: hidden;
-    }
+        body.no-scroll {
+            overflow: hidden;
+        }
 
-    #app {
-        display: flex;
-        min-height: 100vh;
-    }
+        #app {
+            display: flex;
+            min-height: 100vh;
+        }
 
-    /* Sidebar */
-   /* Sidebar */
-.sidebar {
-    width: 288px;
-    background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
-    color: white;
-    position: fixed;
-    inset: 0 auto 0 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Changed from auto to hidden */
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    z-index: 1000;
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.15);
-}
-
-.sidebar.open {
-    transform: translateX(0);
-}
-
-.sidebar-inner {
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-    overflow-y: auto;
-    height: 100vh;
-    /* Hide scrollbar for all browsers */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-/* Hide scrollbar for Chrome, Safari and Opera */
-.sidebar-inner::-webkit-scrollbar {
-    display: none;
-}
-
-.sidebar-close {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(255, 255, 255, 0.15);
-    border: none;
-    color: white;
-    border-radius: var(--radius-sm);
-    padding: 8px;
-    cursor: pointer;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-    backdrop-filter: blur(10px);
-}
-
-.sidebar-close:hover {
-    background: rgba(255, 255, 255, 0.25);
-    transform: rotate(90deg);
-}
-
-.profile {
-    padding: 24px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-    text-align: center;
-    margin-bottom: 16px;
-    cursor: pointer;
-    flex-shrink: 0; /* Prevent profile from shrinking */
-}
-
-.profile-avatar {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--secondary), var(--accent));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 16px;
-    font-size: 28px;
-    color: white;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    border: 3px solid rgba(255, 255, 255, 0.2);
-    overflow: hidden;
-    position: relative;
-}
-
-.profile-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-}
-
-.profile .name {
-    color: #fff;
-    font-weight: 700;
-    font-size: 18px;
-    line-height: 1.2;
-    margin-bottom: 4px;
-}
-
-.profile .role {
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.menu {
-    padding: 16px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: 1;
-    overflow-y: auto;
-    /* Hide scrollbar */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-/* Hide menu scrollbar too */
-.menu::-webkit-scrollbar {
-    display: none;
-}
-
-.menu-btn {
-    appearance: none;
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.8);
-    padding: 14px 16px;
-    border-radius: var(--radius-sm);
-    width: 100%;
-    text-align: left;
-    font-weight: 500;
-    font-size: 14px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    transition: var(--transition);
-    position: relative;
-    overflow: hidden;
-    flex-shrink: 0; /* Prevent buttons from shrinking */
-}
-
-.menu-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    transform: translateX(4px);
-}
-
-.menu-btn.active {
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-}
-
-.menu-btn i {
-    width: 20px;
-    text-align: center;
-    font-size: 16px;
-    opacity: 0.9;
-}
-
-.sidebar-bottom {
-    margin-top: auto;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    flex-shrink: 0; /* Prevent bottom section from shrinking */
-}
-
-.logout-btn {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    border: none;
-    color: white;
-    padding: 14px 20px;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: var(--transition);
-    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
-}
-
-.logout-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
-}
-
-    .sidebar-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-        z-index: 999;
-        backdrop-filter: blur(4px);
-    }
-
-    .sidebar-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
-    }
-
-    .main {
-        margin-left: 0;
-        min-height: 100vh;
-        background: var(--bg);
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-    }
-
-    .top-row {
-        display: flex;
-        align-items: center;
-        padding: 16px 24px;
-        background: var(--card);
-        border-bottom: 1px solid var(--border);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    .app-title {
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--text);
-        flex: 1;
-    }
-
-    .floating-menu-btn {
-        background: var(--card);
-        border: 1px solid var(--border);
-        color: var(--text);
-        padding: 12px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: var(--radius-sm);
-        transition: var(--transition);
-        box-shadow: var(--shadow);
-        flex-shrink: 0;
-        z-index: 2;
-        margin-right: 16px;
-    }
-
-    .floating-menu-btn:hover {
-        background: var(--card-alt);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-lg);
-    }
-
-    @media (min-width: 1024px) {
+        /* Sidebar */
+        /* Sidebar */
         .sidebar {
-            transform: none;
+            width: 288px;
+            background: linear-gradient(180deg, var(--primary-dark) 0%, var(--primary) 100%);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            position: fixed;
+            inset: 0 auto 0 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* Changed from auto to hidden */
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            box-shadow: 8px 0 32px rgba(0, 0, 0, 0.15);
         }
-        .sidebar-overlay {
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .sidebar-inner {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+            overflow-y: auto;
+            height: 100vh;
+            /* Hide scrollbar for all browsers */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .sidebar-inner::-webkit-scrollbar {
             display: none;
         }
-        .main {
-            margin-left: 288px;
-            width: calc(100% - 288px);
-        }
-        .floating-menu-btn {
-            display: none !important;
-        }
+
         .sidebar-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            color: white;
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar-close:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: rotate(90deg);
+        }
+
+        .profile {
+            padding: 24px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            text-align: center;
+            margin-bottom: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+            /* Prevent profile from shrinking */
+        }
+
+        .profile-avatar {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--secondary), var(--accent));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 28px;
+            color: white;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .profile .name {
+            color: #fff;
+            font-weight: 700;
+            font-size: 18px;
+            line-height: 1.2;
+            margin-bottom: 4px;
+        }
+
+        .profile .role {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .menu {
+            padding: 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            overflow-y: auto;
+            /* Hide scrollbar */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        /* Hide menu scrollbar too */
+        .menu::-webkit-scrollbar {
             display: none;
         }
-    }
 
-    /* Your existing form styles */
-    :root{
-        --primary-form:#2563eb;
-        --success-form:#10b981;
-        --danger-form:#ef4444;
-        --gray-form:#6b7280;
-        --border-form:#e5e7eb;
-        --bg-gray-form:#f9fafb;
-        font-family: Inter,'Segoe UI',Roboto,Arial,sans-serif;
-    }
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{background:var(--bg);color:#111827;min-height:100vh}
-    
-    .btn{
-        padding:10px 16px;
-        border-radius:8px;
-        border:0;
-        cursor:pointer;
-        font-size:14px;
-        font-weight:500;
-        transition:all .2s;
-        text-decoration:none;
-        display:inline-block;
-    }
-    .btn-primary-form{background:var(--primary-form);color:#fff}
-    .btn-primary-form:hover{background:#1d4ed8}
-    .btn-success-form{background:var(--success-form);color:#fff}
-    .btn-success-form:hover{background:#059669}
-    .btn-danger-form{background:var(--danger-form);color:#fff}
-    .btn-danger-form:hover{background:#dc2626}
-    .btn-secondary-form{background:#fff;color:#374151;border:1px solid var(--border-form)}
-    .btn-secondary-form:hover{background:var(--bg-gray-form)}
-    
-    .container{
-        max-width:1200px;
-        margin:24px auto;
-        padding:0 20px;
-    }
-    
-    .alert{
-        padding:16px 20px;
-        border-radius:12px;
-        margin-bottom:20px;
-        display:none;
-        font-size:14px;
-        font-weight:500;
-    }
-    .alert.show{display:block}
-    .alert-success-form{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
-    .alert-error-form{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
-    
-    .loading{
-        text-align:center;
-        padding:40px;
-        display:none;
-        background:#fff;
-        border-radius:12px;
-        border:1px solid var(--border-form);
-    }
-    .loading.active{display:block}
-    .loading p{color:var(--gray-form);font-size:15px}
-    
-    .form-section{
-        background:#fff;
-        border-radius:12px;
-        border:1px solid var(--border-form);
-        padding:28px;
-        margin-bottom:20px;
-    }
-    .form-section h2{
-        font-size:18px;
-        font-weight:700;
-        color:#111827;
-        margin-bottom:24px;
-        padding-bottom:12px;
-        border-bottom:2px solid var(--border-form);
-    }
-    
-    .form-grid{
-        display:grid;
-        grid-template-columns:repeat(2,1fr);
-        gap:20px;
-    }
-    .form-group{display:flex;flex-direction:column}
-    .form-group.full{grid-column:1/-1}
-    
-    label{
-        font-weight:600;
-        color:#374151;
-        margin-bottom:8px;
-        font-size:14px;
-    }
-    label .required{color:var(--danger-form);margin-left:2px}
-    
-    input,select,textarea{
-        padding:10px 14px;
-        border:1px solid var(--border-form);
-        border-radius:8px;
-        font-size:14px;
-        font-family:inherit;
-        transition:border .2s;
-    }
-    input:focus,select:focus,textarea:focus{
-        outline:none;
-        border-color:var(--primary-form);
-        box-shadow:0 0 0 3px rgba(37,99,235,.1);
-    }
-    textarea{resize:vertical;min-height:100px}
-    
-    .family-card{
-        background:var(--bg-gray-form);
-        border:1px solid var(--border-form);
-        border-radius:12px;
-        padding:24px;
-        margin-bottom:16px;
-        position:relative;
-    }
-    .family-card h3{
-        font-size:16px;
-        font-weight:600;
-        margin-bottom:20px;
-    }
-    
-    .add-family-btn{
-        margin-bottom:20px;
-    }
+        .menu-btn {
+            appearance: none;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.8);
+            padding: 14px 16px;
+            border-radius: var(--radius-sm);
+            width: 100%;
+            text-align: left;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
+            /* Prevent buttons from shrinking */
+        }
 
-    .doc-card{
-        background:#fff;
-        border:1px dashed var(--border-form);
-        border-radius:10px;
-        padding:16px;
-        margin:12px 0;
-    }
-    .doc-card h4{
-        font-size:14px;
-        font-weight:600;
-        margin-bottom:12px;
-        color:#111827;
-    }
-    .doc-controls{
-        display:flex;
-        gap:12px;
-        flex-wrap:wrap;
-    }
-    .doc-controls .form-group{
-        min-width:220px;
-        flex:1;
-    }
-    .doc-section-header{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        margin:10px 0 6px;
-    }
-    .doc-section-header .title{
-        font-size:14px;
-        font-weight:600;
-        color:#374151;
-    }
-    
-    .actions{
-        display:flex;
-        justify-content:space-between;
-        gap:12px;
-        padding:24px 0;
-    }
-    .actions-left,.actions-right{
-        display:flex;
-        gap:12px;
-    }
-    
-    @media (max-width:768px){
-        .form-grid{grid-template-columns:1fr}
-        .form-group.full{grid-column:1}
-        .actions{flex-direction:column}
-        .actions-left,.actions-right{width:100%}
-        .btn{width:100%}
-    }
+        .menu-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            transform: translateX(4px);
+        }
 
-    .help{font-size:12px;color:#6b7280;margin-top:6px}
-    
-    .error-message {
-        color: #ef4444;
-        font-size: 12px;
-        margin-top: 4px;
-        display: none;
-    }
-    
-    input.invalid, select.invalid, textarea.invalid {
-        border-color: #ef4444 !important;
-    }
-    
-    input.valid, select.valid, textarea.valid {
-        border-color: #10b981 !important;
-    }
-    
-    .badge{
-        display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:600;
-        border:1px solid var(--border-form);background:#fff;margin-top:8px;color:#374151
-    }
-    .badge.success{border-color:#a7f3d0;background:#ecfdf5;color:#065f46}
-    .muted{color:#6b7280;font-size:12px;margin-top:6px}
-</style>
+        .menu-btn.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .menu-btn i {
+            width: 20px;
+            text-align: center;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .sidebar-bottom {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            flex-shrink: 0;
+            /* Prevent bottom section from shrinking */
+        }
+
+        .logout-btn {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border: none;
+            color: white;
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: var(--transition);
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 999;
+            backdrop-filter: blur(4px);
+        }
+
+        .sidebar-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .main {
+            margin-left: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .top-row {
+            display: flex;
+            align-items: center;
+            padding: 16px 24px;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .app-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            flex: 1;
+        }
+
+        .floating-menu-btn {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+            box-shadow: var(--shadow);
+            flex-shrink: 0;
+            z-index: 2;
+            margin-right: 16px;
+        }
+
+        .floating-menu-btn:hover {
+            background: var(--card-alt);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        @media (min-width: 1024px) {
+            .sidebar {
+                transform: none;
+            }
+
+            .sidebar-overlay {
+                display: none;
+            }
+
+            .main {
+                margin-left: 288px;
+                width: calc(100% - 288px);
+            }
+
+            .floating-menu-btn {
+                display: none !important;
+            }
+
+            .sidebar-close {
+                display: none;
+            }
+        }
+
+        /* Your existing form styles */
+        :root {
+            --primary-form: #2563eb;
+            --success-form: #10b981;
+            --danger-form: #ef4444;
+            --gray-form: #6b7280;
+            --border-form: #e5e7eb;
+            --bg-gray-form: #f9fafb;
+            font-family: Inter, 'Segoe UI', Roboto, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        body {
+            background: var(--bg);
+            color: #111827;
+            min-height: 100vh
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 0;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all .2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary-form {
+            background: var(--primary-form);
+            color: #fff
+        }
+
+        .btn-primary-form:hover {
+            background: #1d4ed8
+        }
+
+        .btn-success-form {
+            background: var(--success-form);
+            color: #fff
+        }
+
+        .btn-success-form:hover {
+            background: #059669
+        }
+
+        .btn-danger-form {
+            background: var(--danger-form);
+            color: #fff
+        }
+
+        .btn-danger-form:hover {
+            background: #dc2626
+        }
+
+        .btn-secondary-form {
+            background: #fff;
+            color: #374151;
+            border: 1px solid var(--border-form)
+        }
+
+        .btn-secondary-form:hover {
+            background: var(--bg-gray-form)
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 20px;
+        }
+
+        .alert {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .alert.show {
+            display: block
+        }
+
+        .alert-success-form {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0
+        }
+
+        .alert-error-form {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid var(--border-form);
+        }
+
+        .loading.active {
+            display: block
+        }
+
+        .loading p {
+            color: var(--gray-form);
+            font-size: 15px
+        }
+
+        .form-section {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid var(--border-form);
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+
+        .form-section h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border-form);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column
+        }
+
+        .form-group.full {
+            grid-column: 1/-1
+        }
+
+        label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        label .required {
+            color: var(--danger-form);
+            margin-left: 2px
+        }
+
+        input,
+        select,
+        textarea {
+            padding: 10px 14px;
+            border: 1px solid var(--border-form);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border .2s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-form);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px
+        }
+
+        .family-card {
+            background: var(--bg-gray-form);
+            border: 1px solid var(--border-form);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .family-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .add-family-btn {
+            margin-bottom: 20px;
+        }
+
+        .doc-card {
+            background: #fff;
+            border: 1px dashed var(--border-form);
+            border-radius: 10px;
+            padding: 16px;
+            margin: 12px 0;
+        }
+
+        .doc-card h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #111827;
+        }
+
+        .doc-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .doc-controls .form-group {
+            min-width: 220px;
+            flex: 1;
+        }
+
+        .doc-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 10px 0 6px;
+        }
+
+        .doc-section-header .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 24px 0;
+        }
+
+        .actions-left,
+        .actions-right {
+            display: flex;
+            gap: 12px;
+        }
+
+        @media (max-width:768px) {
+            .form-grid {
+                grid-template-columns: 1fr
+            }
+
+            .form-group.full {
+                grid-column: 1
+            }
+
+            .actions {
+                flex-direction: column
+            }
+
+            .actions-left,
+            .actions-right {
+                width: 100%
+            }
+
+            .btn {
+                width: 100%
+            }
+        }
+
+        .help {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 6px
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        input.invalid,
+        select.invalid,
+        textarea.invalid {
+            border-color: #ef4444 !important;
+        }
+
+        input.valid,
+        select.valid,
+        textarea.valid {
+            border-color: #10b981 !important;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid var(--border-form);
+            background: #fff;
+            margin-top: 8px;
+            color: #374151
+        }
+
+        .badge.success {
+            border-color: #a7f3d0;
+            background: #ecfdf5;
+            color: #065f46
+        }
+
+        .muted {
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 6px
+        }
+    </style>
 </head>
+
 <body>
     <div class="sidebar-overlay" id="sidebarOverlay" hidden></div>
 
@@ -1253,8 +1468,9 @@ try {
                 <!-- Profile -->
                 <div class="profile" onclick="window.location.href='dashboard.php'">
                     <div class="profile-avatar">
-                        <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="<?php echo htmlspecialchars($mahal_name); ?> Logo" 
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                        <img src="<?php echo htmlspecialchars($logo_path); ?>"
+                            alt="<?php echo htmlspecialchars($mahal_name); ?> Logo"
+                            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
                         <i class="fas fa-mosque" style="display: none;"></i>
                     </div>
                     <div class="name"><?php echo htmlspecialchars($mahal_name); ?></div>
@@ -1322,20 +1538,25 @@ try {
 
         <main class="main" id="main">
             <div class="top-row">
-                <button class="floating-menu-btn" id="menuToggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu" type="button">
+                <button class="floating-menu-btn" id="menuToggle" aria-controls="sidebar" aria-expanded="false"
+                    aria-label="Open menu" type="button">
                     <i class="fas fa-bars"></i>
                 </button>
-                <div class="app-title">Edit Sahakari Member — <?php echo htmlspecialchars($member['head_name']); ?></div>
-                <a href="sahakari_details.php?id=<?php echo (int)$member['id']; ?>" class="btn btn-primary-form">← Back to Member</a>
+                <div class="app-title">Edit Sahakari Member — <?php echo htmlspecialchars($member['head_name']); ?>
+                </div>
+                <a href="sahakari_details.php?id=<?php echo (int) $member['id']; ?>" class="btn btn-primary-form">← Back
+                    to Member</a>
             </div>
 
             <div class="container">
                 <div id="alertBox" class="alert"></div>
-                <div id="loadingBox" class="loading"><p>✏️ Updating sahakari member data...</p></div>
+                <div id="loadingBox" class="loading">
+                    <p>✏️ Updating sahakari member data...</p>
+                </div>
 
                 <form id="sahakariForm" method="POST" novalidate>
                     <input type="hidden" name="action" value="update_sahakari_member">
-                    <input type="hidden" name="member_id" value="<?php echo (int)$member['id']; ?>">
+                    <input type="hidden" name="member_id" value="<?php echo (int) $member['id']; ?>">
 
                     <!-- Head of Family -->
                     <div class="form-section">
@@ -1343,99 +1564,121 @@ try {
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Full Name <span class="required">*</span></label>
-                                <input type="text" name="head_name" id="head_name" value="<?php echo htmlspecialchars($member['head_name']); ?>" required maxlength="120">
+                                <input type="text" name="head_name" id="head_name"
+                                    value="<?php echo htmlspecialchars($member['head_name']); ?>" required
+                                    maxlength="120">
                                 <div class="error-message" id="head_name_error">Only letters and spaces allowed</div>
                             </div>
 
                             <!-- Father's Name -->
                             <div class="form-group">
                                 <label>Father's Name <span class="required">*</span></label>
-                                <input type="text" name="head_father_name" id="head_father_name" value="<?php echo htmlspecialchars($member['father_name'] ?? ''); ?>" required maxlength="255">
-                                <div class="error-message" id="head_father_name_error">Only letters and spaces allowed</div>
+                                <input type="text" name="head_father_name" id="head_father_name"
+                                    value="<?php echo htmlspecialchars($member['father_name'] ?? ''); ?>" required
+                                    maxlength="255">
+                                <div class="error-message" id="head_father_name_error">Only letters and spaces allowed
+                                </div>
                             </div>
 
                             <!-- Member Number (per-mahal) -->
                             <div class="form-group">
                                 <label>Member No. (Sahakari) <span class="required">*</span></label>
-                                <input type="number" name="member_number" id="member_number"
-                                       min="1" step="1" required
-                                       value="<?php echo htmlspecialchars((string)($member['member_number'] ?? ''), ENT_QUOTES); ?>">
+                                <input type="number" name="member_number" id="member_number" min="1" step="1" required
+                                    value="<?php echo htmlspecialchars((string) ($member['member_number'] ?? ''), ENT_QUOTES); ?>">
                                 <div class="error-message" id="member_number_error">Only numbers allowed</div>
                                 <div class="help">Sequential number unique within your mahal.</div>
                             </div>
 
                             <div class="form-group">
                                 <label>Email <span class="required">*</span></label>
-                                <input type="email" name="head_email" id="head_email" value="<?php echo htmlspecialchars($member['email']); ?>" required maxlength="120" inputmode="email" autocomplete="email">
-                                <div class="error-message" id="head_email_error">Valid email required (must contain @ and .com/.in/.org etc.)</div>
+                                <input type="email" name="head_email" id="head_email"
+                                    value="<?php echo htmlspecialchars($member['email']); ?>" required maxlength="120"
+                                    inputmode="email" autocomplete="email">
+                                <div class="error-message" id="head_email_error">Valid email required (must contain @
+                                    and .com/.in/.org etc.)</div>
                             </div>
                             <div class="form-group">
                                 <label>Phone Number <span class="required">*</span></label>
-                                <input type="tel" name="head_phone" id="head_phone" value="<?php echo htmlspecialchars($member['phone']); ?>" required
-                                       inputmode="tel" maxlength="16"
-                                       pattern="^(\+91[\s-]?)?[6-9]\d{9}$"
-                                       title="Indian mobile: 10 digits starting 6-9 (with optional +91)">
-                                <div class="error-message" id="head_phone_error">Valid 10-digit Indian mobile number required</div>
+                                <input type="tel" name="head_phone" id="head_phone"
+                                    value="<?php echo htmlspecialchars($member['phone']); ?>" required inputmode="tel"
+                                    maxlength="16" pattern="^(\+91[\s-]?)?[6-9]\d{9}$"
+                                    title="Indian mobile: 10 digits starting 6-9 (with optional +91)">
+                                <div class="error-message" id="head_phone_error">Valid 10-digit Indian mobile number
+                                    required</div>
                             </div>
                             <div class="form-group">
                                 <label>Date of Birth <span class="required">*</span></label>
-                                <input type="date" name="head_dob" id="head_dob" value="<?php echo $member['dob'] ? htmlspecialchars($member['dob']) : ''; ?>" required>
+                                <input type="date" name="head_dob" id="head_dob"
+                                    value="<?php echo $member['dob'] ? htmlspecialchars($member['dob']) : ''; ?>"
+                                    required>
                                 <div class="error-message" id="head_dob_error">Date cannot be in future</div>
                             </div>
                             <div class="form-group">
                                 <label>Gender <span class="required">*</span></label>
                                 <select name="head_gender" id="head_gender" required>
-                                    <option value="" <?php echo empty($member['gender'])?'selected':''; ?>>Select Gender</option>
-                                    <option value="Male" <?php echo ($member['gender']==='Male')?'selected':''; ?>>Male</option>
-                                    <option value="Female" <?php echo ($member['gender']==='Female')?'selected':''; ?>>Female</option>
-                                    <option value="Other" <?php echo ($member['gender']==='Other')?'selected':''; ?>>Other</option>
+                                    <option value="" <?php echo empty($member['gender']) ? 'selected' : ''; ?>>Select
+                                        Gender
+                                    </option>
+                                    <option value="Male" <?php echo ($member['gender'] === 'Male') ? 'selected' : ''; ?>>
+                                        Male
+                                    </option>
+                                    <option value="Female" <?php echo ($member['gender'] === 'Female') ? 'selected' : ''; ?>>
+                                        Female</option>
+                                    <option value="Other" <?php echo ($member['gender'] === 'Other') ? 'selected' : ''; ?>>
+                                        Other</option>
                                 </select>
                                 <div class="error-message" id="head_gender_error">Please select a gender</div>
                             </div>
                             <div class="form-group">
                                 <label>Member Status <span class="required">*</span></label>
                                 <select name="member_status" id="member_status" required>
-                                    <option value="" <?php echo empty($member['status']) ? 'selected' : ''; ?>>Select Status</option>
+                                    <option value="" <?php echo empty($member['status']) ? 'selected' : ''; ?>>Select
+                                        Status</option>
                                     <option value="active" <?php echo ($member['status'] ?? 'active') === 'active' ? 'selected' : ''; ?>>Active (Alive)</option>
                                     <option value="death" <?php echo ($member['status'] ?? '') === 'death' ? 'selected' : ''; ?>>Deceased</option>
                                     <option value="freeze" <?php echo ($member['status'] ?? '') === 'freeze' ? 'selected' : ''; ?>>Frozen (Dues continue)</option>
                                     <option value="terminate" <?php echo ($member['status'] ?? '') === 'terminate' ? 'selected' : ''; ?>>Terminated</option>
                                 </select>
-                                <div class="help">"Frozen" status continues due generation. "Deceased" and "Terminated" stop all activities.</div>
+                                <div class="help">"Frozen" status continues due generation. "Deceased" and "Terminated"
+                                    stop all activities.</div>
                             </div>
                             <div class="form-group">
                                 <label>Occupation <span class="required">*</span></label>
                                 <select name="head_occupation" id="head_occupation" required>
                                     <option value="">Select Occupation</option>
-                                    <option value="Business" <?php echo ($member['occupation']==='Business')?'selected':''; ?>>Business</option>
-                                    <option value="Service" <?php echo ($member['occupation']==='Service')?'selected':''; ?>>Service</option>
-                                    <option value="Professional" <?php echo ($member['occupation']==='Professional')?'selected':''; ?>>Professional</option>
-                                    <option value="Homemaker" <?php echo ($member['occupation']==='Homemaker')?'selected':''; ?>>Homemaker</option>
-                                    <option value="Student" <?php echo ($member['occupation']==='Student')?'selected':''; ?>>Student</option>
-                                    <option value="Retired" <?php echo ($member['occupation']==='Retired')?'selected':''; ?>>Retired</option>
-                                    <option value="Agriculture" <?php echo ($member['occupation']==='Agriculture')?'selected':''; ?>>Agriculture</option>
-                                    <option value="Laborer" <?php echo ($member['occupation']==='Laborer')?'selected':''; ?>>Laborer</option>
-                                    <option value="Self Employed" <?php echo ($member['occupation']==='Self Employed')?'selected':''; ?>>Self Employed</option>
-                                    <option value="Unemployed" <?php echo ($member['occupation']==='Unemployed')?'selected':''; ?>>Unemployed</option>
-                                    <option value="Other" <?php echo ($member['occupation']==='Other')?'selected':''; ?>>Other</option>
+                                    <option value="Business" <?php echo ($member['occupation'] === 'Business') ? 'selected' : ''; ?>>Business</option>
+                                    <option value="Service" <?php echo ($member['occupation'] === 'Service') ? 'selected' : ''; ?>>Service</option>
+                                    <option value="Professional" <?php echo ($member['occupation'] === 'Professional') ? 'selected' : ''; ?>>Professional</option>
+                                    <option value="Homemaker" <?php echo ($member['occupation'] === 'Homemaker') ? 'selected' : ''; ?>>Homemaker</option>
+                                    <option value="Student" <?php echo ($member['occupation'] === 'Student') ? 'selected' : ''; ?>>Student</option>
+                                    <option value="Retired" <?php echo ($member['occupation'] === 'Retired') ? 'selected' : ''; ?>>Retired</option>
+                                    <option value="Agriculture" <?php echo ($member['occupation'] === 'Agriculture') ? 'selected' : ''; ?>>Agriculture</option>
+                                    <option value="Laborer" <?php echo ($member['occupation'] === 'Laborer') ? 'selected' : ''; ?>>Laborer</option>
+                                    <option value="Self Employed" <?php echo ($member['occupation'] === 'Self Employed') ? 'selected' : ''; ?>>Self Employed</option>
+                                    <option value="Unemployed" <?php echo ($member['occupation'] === 'Unemployed') ? 'selected' : ''; ?>>Unemployed</option>
+                                    <option value="Other" <?php echo ($member['occupation'] === 'Other') ? 'selected' : ''; ?>>Other</option>
                                 </select>
                                 <div class="error-message" id="head_occupation_error">Please select an occupation</div>
                             </div>
                             <div class="form-group full">
                                 <label>Address <span class="required">*</span></label>
-                                <textarea name="head_address" id="head_address" required minlength="10"><?php echo htmlspecialchars($member['address']); ?></textarea>
-                                <div class="error-message" id="head_address_error">Address must be at least 10 characters</div>
+                                <textarea name="head_address" id="head_address" required
+                                    minlength="10"><?php echo htmlspecialchars($member['address']); ?></textarea>
+                                <div class="error-message" id="head_address_error">Address must be at least 10
+                                    characters</div>
                             </div>
                             <div class="form-group">
                                 <label>Join Date <span class="required">*</span></label>
-                                <input type="date" name="join_date" id="join_date" value="<?php echo htmlspecialchars($member['join_date']); ?>" required>
+                                <input type="date" name="join_date" id="join_date"
+                                    value="<?php echo htmlspecialchars($member['join_date']); ?>" required>
                                 <div class="error-message" id="join_date_error">Date cannot be in future</div>
                             </div>
 
                             <!-- Head Documents -->
                             <div class="doc-section-header" style="margin-top:16px;">
                                 <div class="title">Identity Documents (Head)</div>
-                                <button type="button" class="btn btn-success-form" id="addHeadDocBtn">+ Add Document</button>
+                                <button type="button" class="btn btn-success-form" id="addHeadDocBtn">+ Add
+                                    Document</button>
                             </div>
                             <div id="headDocumentsContainer"></div>
                         </div>
@@ -1449,27 +1692,44 @@ try {
                                 <label>Monthly Donation Status <span class="required">*</span></label>
                                 <select name="monthly_donation_due" id="monthly_donation_due" required>
                                     <option value="">Select Status</option>
-                                    <option value="cleared" <?php echo ($member['monthly_donation_due']==='cleared')?'selected':''; ?>>Cleared</option>
-                                    <option value="due" <?php echo ($member['monthly_donation_due']==='due')?'selected':''; ?>>Due</option>
+                                    <option value="cleared" <?php echo ($member['monthly_donation_due'] === 'cleared') ? 'selected' : ''; ?>>Cleared</option>
+                                    <option value="due" <?php echo ($member['monthly_donation_due'] === 'due') ? 'selected' : ''; ?>>Due</option>
                                 </select>
-                                <div class="error-message" id="monthly_donation_due_error">Please select donation status</div>
+                                <div class="error-message" id="monthly_donation_due_error">Please select donation status
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>Total Due Amount (₹) <span class="required">*</span></label>
-                                <input type="number" name="total_due" id="total_due" step="0.01" min="0" value="<?php echo htmlspecialchars(number_format((float)$member['total_due'], 2, '.', '')); ?>" required>
+                                <input type="number" name="total_due" id="total_due" step="0.01" min="0"
+                                    value="<?php echo htmlspecialchars(number_format((float) $member['total_due'], 2, '.', '')); ?>"
+                                    required>
                                 <div class="error-message" id="total_due_error">Must be a positive number</div>
                             </div>
                             <div class="form-group">
                                 <label>Monthly Fee (₹ / month) <span class="required">*</span></label>
-                                <input type="number" name="monthly_fee" id="monthly_fee" step="0.01" min="0" value="<?php echo htmlspecialchars(number_format((float)($member['monthly_fee'] ?? 0), 2, '.', '')); ?>" required>
+                                <input type="number" name="monthly_fee" id="monthly_fee" step="0.01" min="0"
+                                    value="<?php echo htmlspecialchars(number_format((float) ($member['monthly_fee'] ?? 0), 2, '.', '')); ?>"
+                                    required>
                                 <div class="error-message" id="monthly_fee_error">Must be a positive number</div>
                             </div>
                             <div class="form-group">
+                                <label>Monthly Fee Advance (₹)</label>
+                                <input type="number" name="monthly_fee_advance" id="monthly_fee_advance" step="0.01"
+                                    min="0"
+                                    value="<?php echo htmlspecialchars(number_format((float) ($member['monthly_fee_adv'] ?? 0), 2, '.', '')); ?>">
+                                <div class="error-message" id="monthly_fee_advance_error">Must be a positive number
+                                </div>
+                                <div class="help">Amount paid in advance for future monthly fees. Will not create a
+                                    transaction.</div>
+                            </div>
+                            <div class="form-group">
                                 <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;">
-                                    <input type="checkbox" name="bulk_print_enabled" id="bulk_print_enabled" value="1" <?php echo !empty($member['bulk_print_enabled']) ? 'checked' : ''; ?>>
+                                    <input type="checkbox" name="bulk_print_enabled" id="bulk_print_enabled" value="1"
+                                        <?php echo !empty($member['bulk_print_enabled']) ? 'checked' : ''; ?>>
                                     Enable Bulk Print
                                 </label>
-                                <div class="help">If checked, this member will be included in bulk print operations. Default is OFF.</div>
+                                <div class="help">If checked, this member will be included in bulk print operations.
+                                    Default is OFF.</div>
                             </div>
                         </div>
                     </div>
@@ -1477,14 +1737,16 @@ try {
                     <!-- Family Members -->
                     <div class="form-section">
                         <h2>Family Members</h2>
-                        <button type="button" class="btn btn-success-form add-family-btn" id="addFamilyMemberBtn">+ Add Family Member</button>
+                        <button type="button" class="btn btn-success-form add-family-btn" id="addFamilyMemberBtn">+ Add
+                            Family Member</button>
                         <div id="familyMembersContainer"></div>
                     </div>
 
                     <!-- Actions -->
                     <div class="actions">
                         <div class="actions-left">
-                            <a href="sahakari_details.php?id=<?php echo (int)$member['id']; ?>" class="btn btn-secondary-form">Cancel</a>
+                            <a href="sahakari_details.php?id=<?php echo (int) $member['id']; ?>"
+                                class="btn btn-secondary-form">Cancel</a>
                             <button type="button" class="btn btn-secondary-form" id="clearBtn">Reset Changes</button>
                         </div>
                         <div class="actions-right">
@@ -1496,454 +1758,454 @@ try {
         </main>
     </div>
 
-<script>
-    /* ---------- boot data from PHP ---------- */
-    const existingFamily = <?php echo json_encode($family_members, JSON_UNESCAPED_UNICODE); ?>;
-    const existingHeadDocs = <?php echo json_encode($head_documents, JSON_UNESCAPED_UNICODE); ?>;
-    const existingFamilyDocsById = <?php echo json_encode($family_documents_by_id, JSON_UNESCAPED_UNICODE); ?>;
-    const HEAD_NAME = <?php echo json_encode($member['head_name'] ?? ''); ?>;
+    <script>
+        /* ---------- boot data from PHP ---------- */
+        const existingFamily = <?php echo json_encode($family_members, JSON_UNESCAPED_UNICODE); ?>;
+        const existingHeadDocs = <?php echo json_encode($head_documents, JSON_UNESCAPED_UNICODE); ?>;
+        const existingFamilyDocsById = <?php echo json_encode($family_documents_by_id, JSON_UNESCAPED_UNICODE); ?>;
+        const HEAD_NAME = <?php echo json_encode($member['head_name'] ?? ''); ?>;
 
-    /* ---------- constants & state ---------- */
-    let familyMemberCount = 0;
-    let headDocCount = 0;
+        /* ---------- constants & state ---------- */
+        let familyMemberCount = 0;
+        let headDocCount = 0;
 
-    // default monthly fee to prefill per-child monthly fee inputs
-    const DEFAULT_MEMBER_MONTHLY_FEE = <?php echo json_encode(number_format((float)($member['monthly_fee'] ?? 0), 2, '.', '')); ?>;
+        // default monthly fee to prefill per-child monthly fee inputs
+        const DEFAULT_MEMBER_MONTHLY_FEE = <?php echo json_encode(number_format((float) ($member['monthly_fee'] ?? 0), 2, '.', '')); ?>;
 
-    const DOC_TYPES = [
-        "Aadhaar","Voter ID","PAN","Driver's Licence","Passport","Ration Card","Birth Certificate","Other"
-    ];
+        const DOC_TYPES = [
+            "Aadhaar", "Voter ID", "PAN", "Driver's Licence", "Passport", "Ration Card", "Birth Certificate", "Other"
+        ];
 
-    /* ---------- helpers ---------- */
-    function escapeHtml(text) {
-        return (text || '')
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-    function normalizeDocNumber(str) {
-        return (str || "").toUpperCase().replace(/\s+/g, "");
-    }
-    function validateDocByType(type, number) {
-        const num = normalizeDocNumber(number);
-        switch ((type || "").toLowerCase()) {
-            case "aadhaar": return /^\d{12}$/.test(num);
-            case "pan": return /^[A-Z]{5}\d{4}[A-Z]$/.test(num);
-            case "voter id": return /^[A-Z]{3}\d{7}$/.test(num);
-            case "passport": return /^[A-Z][0-9]{7}$/.test(num);
-            case "driver's licence": return /^[A-Z]{2}\d{2}\s?\d{7,11}$/.test(num);
-            case "ration card": return /^[A-Z0-9]{8,16}$/.test(num);
-            case "birth certificate": return /^[A-Z0-9\-\/]{6,20}$/.test(num);
-            case "other": return num.length >= 4;
-            default: return num.length >= 4;
+        /* ---------- helpers ---------- */
+        function escapeHtml(text) {
+            return (text || '')
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
-    }
-    function isValidIndianPhone(s) {
-        const v = (s || "").replace(/\s|-/g, "");
-        return /^(\+91)?[6-9]\d{9}$/.test(v);
-    }
-    function renumberDocCards(container, prefix) {
-        const cards = container.querySelectorAll('.doc-card h4');
-        cards.forEach((h, i) => h.textContent = `${prefix} ${i+1}`);
-    }
-    function strengthenFamilyInputs(container) {
-        container.querySelectorAll('.fm-phone').forEach(i=>{
-            i.setAttribute('maxlength','16');
-            i.setAttribute('pattern','^(\\+91[\\s-]?)?[6-9]\\d{9}$');
-            i.setAttribute('title','Indian mobile: 10 digits starting 6-9 (optional +91)');
-            i.setAttribute('inputmode','tel');
-        });
-        container.querySelectorAll('.fm-email').forEach(i=>{
-            i.setAttribute('maxlength','120');
-            i.setAttribute('inputmode','email');
-            i.setAttribute('autocomplete','email');
-        });
-        container.querySelectorAll('.fm-name').forEach(i=>i.setAttribute('maxlength','120'));
-        container.querySelectorAll('.fm-father-name').forEach(i=>i.setAttribute('maxlength','255'));
-    }
-
-    /* ---------- Inline validation functions ---------- */
-    function validateName(name) {
-        return /^[A-Za-z\s\.\-']+$/.test(name) && name.length >= 2;
-    }
-
-    function validateFatherName(name) {
-        if (!name) return false; // Required field
-        return /^[A-Za-z\s\.\-']+$/.test(name) && name.length >= 2;
-    }
-
-    function validateMemberNumber(number) {
-        return /^[1-9]\d*$/.test(number);
-    }
-
-    function validateEmail(email) {
-        if (!email) return false; // Required field
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && 
-               (email.endsWith('.com') || email.endsWith('.in') || email.endsWith('.org') || 
-                email.endsWith('.net') || email.endsWith('.edu'));
-    }
-
-    function validatePhone(phone) {
-        const v = (phone || "").replace(/\s|-/g, "");
-        return /^(\+91)?[6-9]\d{9}$/.test(v);
-    }
-
-    function validateDateNotFuture(dateStr) {
-        if (!dateStr) return false; // Required field
-        const date = parseLocalDate(dateStr);
-        if (!date) return false;
-        return date <= todayLocalMidnight();
-    }
-
-    function validateGender(gender) {
-        return gender !== '';
-    }
-
-    function validateOccupation(occupation) {
-        return occupation !== '';
-    }
-
-    function validateAddress(address) {
-        return address.length >= 10;
-    }
-
-    function validateMonthlyFee(fee) {
-        const num = parseFloat(fee);
-        return !isNaN(num) && num >= 0;
-    }
-
-    function validatePositiveNumber(num) {
-        const n = parseFloat(num);
-        return !isNaN(n) && n >= 0;
-    }
-
-    function validateDonationStatus(status) {
-        return status !== '';
-    }
-
-    // ---- local date helpers ----
-    function parseLocalDate(ymd) {
-        if (!ymd) return null;
-        const parts = ymd.split('-').map(Number);
-        const y = parts[0], m = (parts[1] || 1) - 1, d = parts[2] || 1;
-        return new Date(y, m, d);
-    }
-    
-    function todayLocalMidnight() {
-        const t = new Date();
-        t.setHours(0,0,0,0);
-        return t;
-    }
-
-    /* ---------- Inline validation handler ---------- */
-    function setupInlineValidation(inputId, validationFn, errorMessageId, errorText, isRequired = false) {
-        const input = document.getElementById(inputId);
-        const errorElement = document.getElementById(errorMessageId);
-        
-        if (!input || !errorElement) return;
-        
-        // Set error text
-        errorElement.textContent = errorText;
-        
-        input.addEventListener('input', function() {
-            const value = input.value.trim();
-            
-            // Only validate if user has typed something
-            if (value === '') {
-                input.classList.remove('invalid', 'valid');
-                errorElement.style.display = 'none';
-                return;
+        function normalizeDocNumber(str) {
+            return (str || "").toUpperCase().replace(/\s+/g, "");
+        }
+        function validateDocByType(type, number) {
+            const num = normalizeDocNumber(number);
+            switch ((type || "").toLowerCase()) {
+                case "aadhaar": return /^\d{12}$/.test(num);
+                case "pan": return /^[A-Z]{5}\d{4}[A-Z]$/.test(num);
+                case "voter id": return /^[A-Z]{3}\d{7}$/.test(num);
+                case "passport": return /^[A-Z][0-9]{7}$/.test(num);
+                case "driver's licence": return /^[A-Z]{2}\d{2}\s?\d{7,11}$/.test(num);
+                case "ration card": return /^[A-Z0-9]{8,16}$/.test(num);
+                case "birth certificate": return /^[A-Z0-9\-\/]{6,20}$/.test(num);
+                case "other": return num.length >= 4;
+                default: return num.length >= 4;
             }
-            
-            const isValid = validationFn(value);
-            
-            if (isValid) {
-                input.classList.remove('invalid');
-                input.classList.add('valid');
-                errorElement.style.display = 'none';
-            } else {
-                input.classList.remove('valid');
-                input.classList.add('invalid');
-                errorElement.style.display = 'block';
+        }
+        function isValidIndianPhone(s) {
+            const v = (s || "").replace(/\s|-/g, "");
+            return /^(\+91)?[6-9]\d{9}$/.test(v);
+        }
+        function renumberDocCards(container, prefix) {
+            const cards = container.querySelectorAll('.doc-card h4');
+            cards.forEach((h, i) => h.textContent = `${prefix} ${i + 1}`);
+        }
+        function strengthenFamilyInputs(container) {
+            container.querySelectorAll('.fm-phone').forEach(i => {
+                i.setAttribute('maxlength', '16');
+                i.setAttribute('pattern', '^(\\+91[\\s-]?)?[6-9]\\d{9}$');
+                i.setAttribute('title', 'Indian mobile: 10 digits starting 6-9 (optional +91)');
+                i.setAttribute('inputmode', 'tel');
+            });
+            container.querySelectorAll('.fm-email').forEach(i => {
+                i.setAttribute('maxlength', '120');
+                i.setAttribute('inputmode', 'email');
+                i.setAttribute('autocomplete', 'email');
+            });
+            container.querySelectorAll('.fm-name').forEach(i => i.setAttribute('maxlength', '120'));
+            container.querySelectorAll('.fm-father-name').forEach(i => i.setAttribute('maxlength', '255'));
+        }
+
+        /* ---------- Inline validation functions ---------- */
+        function validateName(name) {
+            return /^[A-Za-z\s\.\-']+$/.test(name) && name.length >= 2;
+        }
+
+        function validateFatherName(name) {
+            if (!name) return false; // Required field
+            return /^[A-Za-z\s\.\-']+$/.test(name) && name.length >= 2;
+        }
+
+        function validateMemberNumber(number) {
+            return /^[1-9]\d*$/.test(number);
+        }
+
+        function validateEmail(email) {
+            if (!email) return false; // Required field
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+                (email.endsWith('.com') || email.endsWith('.in') || email.endsWith('.org') ||
+                    email.endsWith('.net') || email.endsWith('.edu'));
+        }
+
+        function validatePhone(phone) {
+            const v = (phone || "").replace(/\s|-/g, "");
+            return /^(\+91)?[6-9]\d{9}$/.test(v);
+        }
+
+        function validateDateNotFuture(dateStr) {
+            if (!dateStr) return false; // Required field
+            const date = parseLocalDate(dateStr);
+            if (!date) return false;
+            return date <= todayLocalMidnight();
+        }
+
+        function validateGender(gender) {
+            return gender !== '';
+        }
+
+        function validateOccupation(occupation) {
+            return occupation !== '';
+        }
+
+        function validateAddress(address) {
+            return address.length >= 10;
+        }
+
+        function validateMonthlyFee(fee) {
+            const num = parseFloat(fee);
+            return !isNaN(num) && num >= 0;
+        }
+
+        function validatePositiveNumber(num) {
+            const n = parseFloat(num);
+            return !isNaN(n) && n >= 0;
+        }
+
+        function validateDonationStatus(status) {
+            return status !== '';
+        }
+
+        // ---- local date helpers ----
+        function parseLocalDate(ymd) {
+            if (!ymd) return null;
+            const parts = ymd.split('-').map(Number);
+            const y = parts[0], m = (parts[1] || 1) - 1, d = parts[2] || 1;
+            return new Date(y, m, d);
+        }
+
+        function todayLocalMidnight() {
+            const t = new Date();
+            t.setHours(0, 0, 0, 0);
+            return t;
+        }
+
+        /* ---------- Inline validation handler ---------- */
+        function setupInlineValidation(inputId, validationFn, errorMessageId, errorText, isRequired = false) {
+            const input = document.getElementById(inputId);
+            const errorElement = document.getElementById(errorMessageId);
+
+            if (!input || !errorElement) return;
+
+            // Set error text
+            errorElement.textContent = errorText;
+
+            input.addEventListener('input', function () {
+                const value = input.value.trim();
+
+                // Only validate if user has typed something
+                if (value === '') {
+                    input.classList.remove('invalid', 'valid');
+                    errorElement.style.display = 'none';
+                    return;
+                }
+
+                const isValid = validationFn(value);
+
+                if (isValid) {
+                    input.classList.remove('invalid');
+                    input.classList.add('valid');
+                    errorElement.style.display = 'none';
+                } else {
+                    input.classList.remove('valid');
+                    input.classList.add('invalid');
+                    errorElement.style.display = 'block';
+                }
+            });
+
+            input.addEventListener('blur', function () {
+                const value = input.value.trim();
+
+                // For required fields, empty is invalid
+                if (value === '' && isRequired) {
+                    input.classList.add('invalid');
+                    errorElement.style.display = 'block';
+                    return;
+                }
+
+                // For optional fields, empty is okay
+                if (value === '' && !isRequired) {
+                    input.classList.remove('invalid', 'valid');
+                    errorElement.style.display = 'none';
+                    return;
+                }
+
+                const isValid = validationFn(value);
+
+                if (isValid) {
+                    input.classList.remove('invalid');
+                    input.classList.add('valid');
+                    errorElement.style.display = 'none';
+                } else {
+                    input.classList.remove('valid');
+                    input.classList.add('invalid');
+                    errorElement.style.display = 'block';
+                }
+            });
+        }
+
+        /* ---------- Setup all inline validations ---------- */
+        function setupAllValidations() {
+            // Head of family validations - ALL REQUIRED
+            setupInlineValidation('head_name', validateName, 'head_name_error', 'Head name is required (only letters and spaces allowed, min 2 characters)!', true);
+            setupInlineValidation('head_father_name', validateFatherName, 'head_father_name_error', 'Father\'s name is required (only letters and spaces allowed, min 2 characters)!', true);
+            setupInlineValidation('member_number', validateMemberNumber, 'member_number_error', 'Member number is required and must be a positive whole number (1, 2, 3, ...).', true);
+            setupInlineValidation('head_email', validateEmail, 'head_email_error', 'Email is required. Please enter a valid email address (must contain @ and .com/.in/.org etc.)!', true);
+            setupInlineValidation('head_phone', validatePhone, 'head_phone_error', 'Phone number is required. Invalid Indian mobile number. Expected 10 digits starting 6-9 (optional +91).', true);
+            setupInlineValidation('head_dob', validateDateNotFuture, 'head_dob_error', 'Date of Birth is required and cannot be in future.', true);
+            setupInlineValidation('head_address', validateAddress, 'head_address_error', 'Address is required (min 10 characters).', true);
+            setupInlineValidation('join_date', validateDateNotFuture, 'join_date_error', 'Join date is required and cannot be in future.', true);
+            setupInlineValidation('monthly_fee', validateMonthlyFee, 'monthly_fee_error', 'Monthly fee is required (must be a positive number).', true);
+            setupInlineValidation('total_due', validatePositiveNumber, 'total_due_error', 'Total due is required (must be a positive number).', true);
+
+            // Dropdown validations - ALL REQUIRED
+            const genderSelect = document.getElementById('head_gender');
+            const occupationSelect = document.getElementById('head_occupation');
+            const statusSelect = document.getElementById('member_status');
+            const donationSelect = document.getElementById('monthly_donation_due');
+
+            // Gender validation - Required
+            if (genderSelect) {
+                const errorElement = document.getElementById('head_gender_error');
+                genderSelect.addEventListener('change', function () {
+                    const value = this.value;
+                    if (value !== '') {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        if (errorElement) errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        if (errorElement) {
+                            errorElement.style.display = 'block';
+                            errorElement.textContent = 'Gender is required. Please select a gender.';
+                        }
+                    }
+                });
             }
-        });
-        
-        input.addEventListener('blur', function() {
-            const value = input.value.trim();
-            
+
+            // Occupation validation - Required
+            if (occupationSelect) {
+                const errorElement = document.getElementById('head_occupation_error');
+                occupationSelect.addEventListener('change', function () {
+                    const value = this.value;
+                    if (value !== '') {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        if (errorElement) errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        if (errorElement) {
+                            errorElement.style.display = 'block';
+                            errorElement.textContent = 'Occupation is required. Please select an occupation.';
+                        }
+                    }
+                });
+            }
+
+            // Status validation - Required
+            if (statusSelect) {
+                const errorElement = document.getElementById('member_status_error');
+                if (!errorElement) {
+                    errorElement = document.createElement('div');
+                    errorElement.className = 'error-message';
+                    errorElement.id = 'member_status_error';
+                    errorElement.textContent = 'Member status is required. Please select member status.';
+                    errorElement.style.display = 'none';
+                    statusSelect.parentNode.appendChild(errorElement);
+                }
+                statusSelect.addEventListener('change', function () {
+                    const value = this.value;
+                    if (value !== '') {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        errorElement.style.display = 'block';
+                    }
+                });
+            }
+
+            // Donation status validation - Required
+            if (donationSelect) {
+                const errorElement = document.getElementById('monthly_donation_due_error');
+                donationSelect.addEventListener('change', function () {
+                    const value = this.value;
+                    if (value !== '') {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        if (errorElement) errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        if (errorElement) {
+                            errorElement.style.display = 'block';
+                            errorElement.textContent = 'Monthly donation status is required. Please select donation status.';
+                        }
+                    }
+                });
+            }
+        }
+
+        /* ---------- Family member validation setup ---------- */
+        function setupFamilyMemberValidation(familyCard) {
+            const nameInput = familyCard.querySelector('.fm-name');
+            const relationshipSelect = familyCard.querySelector('.fm-relationship');
+
+            // Create error elements if they don't exist
+            const createErrorElement = (input, messageId, errorText) => {
+                let errorElement = input.parentNode.querySelector('.error-message');
+                if (!errorElement) {
+                    errorElement = document.createElement('div');
+                    errorElement.className = 'error-message';
+                    errorElement.id = messageId;
+                    errorElement.textContent = errorText;
+                    errorElement.style.display = 'none';
+                    input.parentNode.appendChild(errorElement);
+                }
+                return errorElement;
+            };
+
+            // Name validation (required)
+            if (nameInput) {
+                const errorElement = createErrorElement(nameInput, 'fm_name_error_' + familyCard.id,
+                    'Only letters and spaces allowed (min 2 characters)');
+
+                nameInput.addEventListener('input', function () {
+                    const value = this.value.trim();
+
+                    if (value === '') {
+                        this.classList.remove('invalid', 'valid');
+                        errorElement.style.display = 'none';
+                        return;
+                    }
+
+                    const isValid = validateName(value);
+
+                    if (isValid) {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        errorElement.style.display = 'block';
+                    }
+                });
+
+                nameInput.addEventListener('blur', function () {
+                    const value = this.value.trim();
+
+                    if (value === '') {
+                        this.classList.remove('invalid', 'valid');
+                        errorElement.style.display = 'none';
+                        return;
+                    }
+
+                    const isValid = validateName(value);
+
+                    if (isValid) {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        errorElement.style.display = 'none';
+                    } else {
+                        this.classList.remove('valid');
+                        this.classList.add('invalid');
+                        errorElement.style.display = 'block';
+                    }
+                });
+            }
+
+            // Relationship validation (required)
+            if (relationshipSelect) {
+                const errorElement = createErrorElement(relationshipSelect, 'fm_relationship_error_' + familyCard.id,
+                    'Please select a relationship');
+
+                relationshipSelect.addEventListener('change', function () {
+                    const value = this.value;
+
+                    if (value === '') {
+                        this.classList.add('invalid');
+                        this.classList.remove('valid');
+                        errorElement.style.display = 'block';
+                    } else {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        errorElement.style.display = 'none';
+                    }
+                });
+            }
+        }
+
+        /* ---------- Form field validation for form submission ---------- */
+        function validateFormField(fieldId, validationFn, errorElementId, errorMessage, isRequired = false) {
+            const field = document.getElementById(fieldId);
+            const errorElement = document.getElementById(errorElementId);
+
+            if (!field) return true;
+
+            const value = field.value.trim();
+
             // For required fields, empty is invalid
             if (value === '' && isRequired) {
-                input.classList.add('invalid');
-                errorElement.style.display = 'block';
-                return;
+                field.classList.add('invalid');
+                if (errorElement) {
+                    errorElement.style.display = 'block';
+                    errorElement.textContent = errorMessage;
+                }
+                field.focus();
+                return false;
             }
-            
+
             // For optional fields, empty is okay
             if (value === '' && !isRequired) {
-                input.classList.remove('invalid', 'valid');
-                errorElement.style.display = 'none';
-                return;
+                if (errorElement) errorElement.style.display = 'none';
+                field.classList.remove('invalid');
+                return true;
             }
-            
+
             const isValid = validationFn(value);
-            
-            if (isValid) {
-                input.classList.remove('invalid');
-                input.classList.add('valid');
-                errorElement.style.display = 'none';
-            } else {
-                input.classList.remove('valid');
-                input.classList.add('invalid');
-                errorElement.style.display = 'block';
-            }
-        });
-    }
 
-    /* ---------- Setup all inline validations ---------- */
-    function setupAllValidations() {
-        // Head of family validations - ALL REQUIRED
-        setupInlineValidation('head_name', validateName, 'head_name_error', 'Head name is required (only letters and spaces allowed, min 2 characters)!', true);
-        setupInlineValidation('head_father_name', validateFatherName, 'head_father_name_error', 'Father\'s name is required (only letters and spaces allowed, min 2 characters)!', true);
-        setupInlineValidation('member_number', validateMemberNumber, 'member_number_error', 'Member number is required and must be a positive whole number (1, 2, 3, ...).', true);
-        setupInlineValidation('head_email', validateEmail, 'head_email_error', 'Email is required. Please enter a valid email address (must contain @ and .com/.in/.org etc.)!', true);
-        setupInlineValidation('head_phone', validatePhone, 'head_phone_error', 'Phone number is required. Invalid Indian mobile number. Expected 10 digits starting 6-9 (optional +91).', true);
-        setupInlineValidation('head_dob', validateDateNotFuture, 'head_dob_error', 'Date of Birth is required and cannot be in future.', true);
-        setupInlineValidation('head_address', validateAddress, 'head_address_error', 'Address is required (min 10 characters).', true);
-        setupInlineValidation('join_date', validateDateNotFuture, 'join_date_error', 'Join date is required and cannot be in future.', true);
-        setupInlineValidation('monthly_fee', validateMonthlyFee, 'monthly_fee_error', 'Monthly fee is required (must be a positive number).', true);
-        setupInlineValidation('total_due', validatePositiveNumber, 'total_due_error', 'Total due is required (must be a positive number).', true);
-        
-        // Dropdown validations - ALL REQUIRED
-        const genderSelect = document.getElementById('head_gender');
-        const occupationSelect = document.getElementById('head_occupation');
-        const statusSelect = document.getElementById('member_status');
-        const donationSelect = document.getElementById('monthly_donation_due');
-        
-        // Gender validation - Required
-        if (genderSelect) {
-            const errorElement = document.getElementById('head_gender_error');
-            genderSelect.addEventListener('change', function() {
-                const value = this.value;
-                if (value !== '') {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    if (errorElement) errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    if (errorElement) {
-                        errorElement.style.display = 'block';
-                        errorElement.textContent = 'Gender is required. Please select a gender.';
-                    }
-                }
-            });
-        }
-        
-        // Occupation validation - Required
-        if (occupationSelect) {
-            const errorElement = document.getElementById('head_occupation_error');
-            occupationSelect.addEventListener('change', function() {
-                const value = this.value;
-                if (value !== '') {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    if (errorElement) errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    if (errorElement) {
-                        errorElement.style.display = 'block';
-                        errorElement.textContent = 'Occupation is required. Please select an occupation.';
-                    }
-                }
-            });
-        }
-        
-        // Status validation - Required
-        if (statusSelect) {
-            const errorElement = document.getElementById('member_status_error');
-            if (!errorElement) {
-                errorElement = document.createElement('div');
-                errorElement.className = 'error-message';
-                errorElement.id = 'member_status_error';
-                errorElement.textContent = 'Member status is required. Please select member status.';
-                errorElement.style.display = 'none';
-                statusSelect.parentNode.appendChild(errorElement);
-            }
-            statusSelect.addEventListener('change', function() {
-                const value = this.value;
-                if (value !== '') {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    errorElement.style.display = 'block';
-                }
-            });
-        }
-        
-        // Donation status validation - Required
-        if (donationSelect) {
-            const errorElement = document.getElementById('monthly_donation_due_error');
-            donationSelect.addEventListener('change', function() {
-                const value = this.value;
-                if (value !== '') {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    if (errorElement) errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    if (errorElement) {
-                        errorElement.style.display = 'block';
-                        errorElement.textContent = 'Monthly donation status is required. Please select donation status.';
-                    }
-                }
-            });
-        }
-    }
-
-    /* ---------- Family member validation setup ---------- */
-    function setupFamilyMemberValidation(familyCard) {
-        const nameInput = familyCard.querySelector('.fm-name');
-        const relationshipSelect = familyCard.querySelector('.fm-relationship');
-        
-        // Create error elements if they don't exist
-        const createErrorElement = (input, messageId, errorText) => {
-            let errorElement = input.parentNode.querySelector('.error-message');
-            if (!errorElement) {
-                errorElement = document.createElement('div');
-                errorElement.className = 'error-message';
-                errorElement.id = messageId;
-                errorElement.textContent = errorText;
-                errorElement.style.display = 'none';
-                input.parentNode.appendChild(errorElement);
-            }
-            return errorElement;
-        };
-        
-        // Name validation (required)
-        if (nameInput) {
-            const errorElement = createErrorElement(nameInput, 'fm_name_error_' + familyCard.id, 
-                                                  'Only letters and spaces allowed (min 2 characters)');
-            
-            nameInput.addEventListener('input', function() {
-                const value = this.value.trim();
-                
-                if (value === '') {
-                    this.classList.remove('invalid', 'valid');
-                    errorElement.style.display = 'none';
-                    return;
-                }
-                
-                const isValid = validateName(value);
-                
-                if (isValid) {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    errorElement.style.display = 'block';
-                }
-            });
-            
-            nameInput.addEventListener('blur', function() {
-                const value = this.value.trim();
-                
-                if (value === '') {
-                    this.classList.remove('invalid', 'valid');
-                    errorElement.style.display = 'none';
-                    return;
-                }
-                
-                const isValid = validateName(value);
-                
-                if (isValid) {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    errorElement.style.display = 'none';
-                } else {
-                    this.classList.remove('valid');
-                    this.classList.add('invalid');
-                    errorElement.style.display = 'block';
-                }
-            });
-        }
-        
-        // Relationship validation (required)
-        if (relationshipSelect) {
-            const errorElement = createErrorElement(relationshipSelect, 'fm_relationship_error_' + familyCard.id, 
-                                                  'Please select a relationship');
-            
-            relationshipSelect.addEventListener('change', function() {
-                const value = this.value;
-                
-                if (value === '') {
-                    this.classList.add('invalid');
-                    this.classList.remove('valid');
-                    errorElement.style.display = 'block';
-                } else {
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                    errorElement.style.display = 'none';
-                }
-            });
-        }
-    }
-
-    /* ---------- Form field validation for form submission ---------- */
-    function validateFormField(fieldId, validationFn, errorElementId, errorMessage, isRequired = false) {
-        const field = document.getElementById(fieldId);
-        const errorElement = document.getElementById(errorElementId);
-        
-        if (!field) return true;
-        
-        const value = field.value.trim();
-        
-        // For required fields, empty is invalid
-        if (value === '' && isRequired) {
-            field.classList.add('invalid');
-            if (errorElement) {
+            if (!isValid && errorElement) {
+                field.classList.add('invalid');
                 errorElement.style.display = 'block';
                 errorElement.textContent = errorMessage;
+                field.focus();
+            } else if (errorElement) {
+                field.classList.remove('invalid');
+                errorElement.style.display = 'none';
             }
-            field.focus();
-            return false;
-        }
-        
-        // For optional fields, empty is okay
-        if (value === '' && !isRequired) {
-            if (errorElement) errorElement.style.display = 'none';
-            field.classList.remove('invalid');
-            return true;
-        }
-        
-        const isValid = validationFn(value);
-        
-        if (!isValid && errorElement) {
-            field.classList.add('invalid');
-            errorElement.style.display = 'block';
-            errorElement.textContent = errorMessage;
-            field.focus();
-        } else if (errorElement) {
-            field.classList.remove('invalid');
-            errorElement.style.display = 'none';
-        }
-        
-        return isValid;
-    }
 
-    /* ---------- document card factory ---------- */
-    function createDocumentCard(titleText, prefill = {}) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'doc-card';
-        wrapper.innerHTML = `
+            return isValid;
+        }
+
+        /* ---------- document card factory ---------- */
+        function createDocumentCard(titleText, prefill = {}) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'doc-card';
+            wrapper.innerHTML = `
             <h4>${titleText}</h4>
             <div class="doc-controls">
                 <div class="form-group">
@@ -1980,52 +2242,52 @@ try {
             </div>
         `;
 
-        const sel = wrapper.querySelector('.doc-type');
-        DOC_TYPES.forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.textContent = d;
-            sel.appendChild(opt);
-        });
-        if (prefill.doc_type) sel.value = prefill.doc_type;
+            const sel = wrapper.querySelector('.doc-type');
+            DOC_TYPES.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                sel.appendChild(opt);
+            });
+            if (prefill.doc_type) sel.value = prefill.doc_type;
 
-        if (prefill.doc_number) wrapper.querySelector('.doc-number').value = prefill.doc_number;
-        if (prefill.name_on_doc) wrapper.querySelector('.doc-name').value = prefill.name_on_doc;
-        if (prefill.issued_by) wrapper.querySelector('.doc-issued-by').value = prefill.issued_by;
-        if (prefill.issued_on) wrapper.querySelector('.doc-issued-on').value = prefill.issued_on;
-        if (prefill.expiry_on) wrapper.querySelector('.doc-expiry-on').value = prefill.expiry_on;
-        if (prefill.notes) wrapper.querySelector('.doc-notes').value = prefill.notes;
+            if (prefill.doc_number) wrapper.querySelector('.doc-number').value = prefill.doc_number;
+            if (prefill.name_on_doc) wrapper.querySelector('.doc-name').value = prefill.name_on_doc;
+            if (prefill.issued_by) wrapper.querySelector('.doc-issued-by').value = prefill.issued_by;
+            if (prefill.issued_on) wrapper.querySelector('.doc-issued-on').value = prefill.issued_on;
+            if (prefill.expiry_on) wrapper.querySelector('.doc-expiry-on').value = prefill.expiry_on;
+            if (prefill.notes) wrapper.querySelector('.doc-notes').value = prefill.notes;
 
-        return wrapper;
-    }
+            return wrapper;
+        }
 
-    /* ---------- Head docs UI ---------- */
-    document.getElementById('addHeadDocBtn').addEventListener('click', function() {
-        headDocCount++;
-        const card = createDocumentCard("Document " + headDocCount);
-        card.querySelector('.doc-remove-btn').addEventListener('click', () => {
-            card.remove();
+        /* ---------- Head docs UI ---------- */
+        document.getElementById('addHeadDocBtn').addEventListener('click', function () {
+            headDocCount++;
+            const card = createDocumentCard("Document " + headDocCount);
+            card.querySelector('.doc-remove-btn').addEventListener('click', () => {
+                card.remove();
+                renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
+            });
+            document.getElementById('headDocumentsContainer').appendChild(card);
             renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
         });
-        document.getElementById('headDocumentsContainer').appendChild(card);
-        renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
-    });
 
-    /* ---------- Family UI ---------- */
-    document.getElementById('addFamilyMemberBtn').addEventListener('click', function () {
-        addFamilyCard();
-    });
+        /* ---------- Family UI ---------- */
+        document.getElementById('addFamilyMemberBtn').addEventListener('click', function () {
+            addFamilyCard();
+        });
 
-    function addFamilyCard(prefill = {}, existingId = null) {
-        familyMemberCount++;
-        const memberCard = document.createElement('div');
-        memberCard.className = 'family-card';
-        memberCard.id = `family_member_${familyMemberCount}`;
+        function addFamilyCard(prefill = {}, existingId = null) {
+            familyMemberCount++;
+            const memberCard = document.createElement('div');
+            memberCard.className = 'family-card';
+            memberCard.id = `family_member_${familyMemberCount}`;
 
-        // prefill father_name if present in prefill
-        const preFather = prefill.father_name || '';
+            // prefill father_name if present in prefill
+            const preFather = prefill.father_name || '';
 
-        memberCard.innerHTML = `
+            memberCard.innerHTML = `
             <h3>Family Member ${familyMemberCount}</h3>
             <div class="form-grid">
                 <div class="form-group">
@@ -2036,9 +2298,9 @@ try {
                     <label>Relationship <span class="required">*</span></label>
                     <select class="fm-relationship">
                         <option value="">Select Relationship</option>
-                        ${['Spouse','Son','Daughter','Father','Mother','Brother','Sister','Other'].map(opt =>
-                            `<option value="${opt}" ${(prefill.relationship===opt)?'selected':''}>${opt}</option>`
-                        ).join('')}
+                        ${['Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Brother', 'Sister', 'Other'].map(opt =>
+                `<option value="${opt}" ${(prefill.relationship === opt) ? 'selected' : ''}>${opt}</option>`
+            ).join('')}
                     </select>
                 </div>
 
@@ -2056,9 +2318,9 @@ try {
                     <label>Gender</label>
                     <select class="fm-gender">
                         <option value="">Select Gender</option>
-                        <option value="Male" ${(prefill.gender==='Male')?'selected':''}>Male</option>
-                        <option value="Female" ${(prefill.gender==='Female')?'selected':''}>Female</option>
-                        <option value="Other" ${(prefill.gender==='Other')?'selected':''}>Other</option>
+                        <option value="Male" ${(prefill.gender === 'Male') ? 'selected' : ''}>Male</option>
+                        <option value="Female" ${(prefill.gender === 'Female') ? 'selected' : ''}>Female</option>
+                        <option value="Other" ${(prefill.gender === 'Other') ? 'selected' : ''}>Other</option>
                     </select>
                 </div>
 
@@ -2093,490 +2355,491 @@ try {
             <button type="button" class="btn btn-danger-form remove-fm-btn" style="margin-top:14px;">Remove Member</button>
         `;
 
-        strengthenFamilyInputs(memberCard);
-        
-        // Setup family member validation (only for name and relationship)
-        setupFamilyMemberValidation(memberCard);
-        
-        memberCard.querySelector('.remove-fm-btn').addEventListener('click', function () {
-            memberCard.remove();
-            updateMemberNumbers();
-        });
+            strengthenFamilyInputs(memberCard);
 
-        // doc button
-        const fmDocsContainer = memberCard.querySelector('.fm-docs-container');
-        const addDocBtn = memberCard.querySelector('.fm-add-doc-btn');
-        addDocBtn.addEventListener('click', () => {
-            const card = createDocumentCard("Document");
-            card.querySelector('.doc-remove-btn').addEventListener('click', () => {
-                card.remove();
-                renumberDocCards(fmDocsContainer, 'Document');
+            // Setup family member validation (only for name and relationship)
+            setupFamilyMemberValidation(memberCard);
+
+            memberCard.querySelector('.remove-fm-btn').addEventListener('click', function () {
+                memberCard.remove();
+                updateMemberNumbers();
             });
-            fmDocsContainer.appendChild(card);
-            renumberDocCards(fmDocsContainer, 'Document');
-        });
 
-        // relationship -> auto-fill father's name if Son/Daughter
-        const relSelect = memberCard.querySelector('.fm-relationship');
-        const fatherInput = memberCard.querySelector('.fm-father-name');
-        function onRelationChange() {
-            const rel = relSelect.value;
-            if (rel === 'Son' || rel === 'Daughter') {
-                // auto-fill and set readonly
-                fatherInput.value = HEAD_NAME || fatherInput.value || '';
-                fatherInput.setAttribute('readonly', 'readonly');
-            } else {
-                // restore editable
-                fatherInput.removeAttribute('readonly');
-                // if there was a prefill and relationship isn't son/daughter we keep it as-is
-            }
-        }
-        relSelect.addEventListener('change', onRelationChange);
-        // initialize based on current selection / prefill
-        onRelationChange();
-
-        document.getElementById('familyMembersContainer').appendChild(memberCard);
-        updateMemberNumbers();
-
-        // preload existing family docs if editing existing row
-        if (existingId && existingFamilyDocsById && Array.isArray(existingFamilyDocsById[existingId])) {
-            existingFamilyDocsById[existingId].forEach(d => {
-                const card = createDocumentCard("Document", d);
+            // doc button
+            const fmDocsContainer = memberCard.querySelector('.fm-docs-container');
+            const addDocBtn = memberCard.querySelector('.fm-add-doc-btn');
+            addDocBtn.addEventListener('click', () => {
+                const card = createDocumentCard("Document");
                 card.querySelector('.doc-remove-btn').addEventListener('click', () => {
                     card.remove();
                     renumberDocCards(fmDocsContainer, 'Document');
                 });
                 fmDocsContainer.appendChild(card);
+                renumberDocCards(fmDocsContainer, 'Document');
             });
-            renumberDocCards(fmDocsContainer, 'Document');
-        }
-    }
 
-    function updateMemberNumbers() {
-        const cards = document.querySelectorAll('.family-card');
-        cards.forEach((card, index) => {
-            const h3 = card.querySelector('h3');
-            if (h3) h3.textContent = `Family Member ${index + 1}`;
-        });
-        familyMemberCount = document.querySelectorAll('.family-card').length;
-    }
-
-    /* ---------- preload UI from existing ---------- */
-    document.addEventListener('DOMContentLoaded', function () {
-        // preload head docs
-        if (Array.isArray(existingHeadDocs)) {
-            existingHeadDocs.forEach(d => {
-                headDocCount++;
-                const card = createDocumentCard("Document " + headDocCount, d);
-                card.querySelector('.doc-remove-btn').addEventListener('click', () => {
-                    card.remove();
-                    renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
-                });
-                document.getElementById('headDocumentsContainer').appendChild(card);
-            });
-            renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
-        }
-
-        // preload family members + their docs
-        if (Array.isArray(existingFamily)) {
-            existingFamily.forEach(fm => addFamilyCard({
-                name: fm.name || '',
-                relationship: fm.relationship || '',
-                dob: fm.dob || '',
-                gender: fm.gender || '',
-                phone: fm.phone || '',
-                email: fm.email || '',
-                father_name: fm.father_name || '',
-                status: fm.status || '',
-            }, fm.id || null));
-        }
-
-        // Setup all validations
-        setupAllValidations();
-    });
-
-    /* ---------- reset ---------- */
-    document.getElementById('clearBtn').addEventListener('click', function () {
-        if (!confirm('Reset changes to original values?')) return;
-        window.location.reload();
-    });
-
-    /* ---------- submit ---------- */
-    document.getElementById('sahakariForm').addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        if (!validateForm()) return;
-
-        // collect head docs
-        const headDocs = [];
-        document.querySelectorAll('#headDocumentsContainer .doc-card').forEach(card => {
-            const type = card.querySelector('.doc-type')?.value || '';
-            const number = card.querySelector('.doc-number')?.value.trim() || '';
-            const nameOn = card.querySelector('.doc-name')?.value.trim() || '';
-            const issuedBy = card.querySelector('.doc-issued-by')?.value.trim() || '';
-            const issuedOn = card.querySelector('.doc-issued-on')?.value || '';
-            const expiryOn = card.querySelector('.doc-expiry-on')?.value || '';
-            const notes = card.querySelector('.doc-notes')?.value.trim() || '';
-
-            if (type || number) {
-                headDocs.push({
-                    doc_type: type,
-                    doc_number: number,
-                    name_on_doc: nameOn,
-                    issued_by: issuedBy,
-                    issued_on: issuedOn,
-                    expiry_on: expiryOn,
-                    notes: notes
-                });
+            // relationship -> auto-fill father's name if Son/Daughter
+            const relSelect = memberCard.querySelector('.fm-relationship');
+            const fatherInput = memberCard.querySelector('.fm-father-name');
+            function onRelationChange() {
+                const rel = relSelect.value;
+                if (rel === 'Son' || rel === 'Daughter') {
+                    // auto-fill and set readonly
+                    fatherInput.value = HEAD_NAME || fatherInput.value || '';
+                    fatherInput.setAttribute('readonly', 'readonly');
+                } else {
+                    // restore editable
+                    fatherInput.removeAttribute('readonly');
+                    // if there was a prefill and relationship isn't son/daughter we keep it as-is
+                }
             }
+            relSelect.addEventListener('change', onRelationChange);
+            // initialize based on current selection / prefill
+            onRelationChange();
+
+            document.getElementById('familyMembersContainer').appendChild(memberCard);
+            updateMemberNumbers();
+
+            // preload existing family docs if editing existing row
+            if (existingId && existingFamilyDocsById && Array.isArray(existingFamilyDocsById[existingId])) {
+                existingFamilyDocsById[existingId].forEach(d => {
+                    const card = createDocumentCard("Document", d);
+                    card.querySelector('.doc-remove-btn').addEventListener('click', () => {
+                        card.remove();
+                        renumberDocCards(fmDocsContainer, 'Document');
+                    });
+                    fmDocsContainer.appendChild(card);
+                });
+                renumberDocCards(fmDocsContainer, 'Document');
+            }
+        }
+
+        function updateMemberNumbers() {
+            const cards = document.querySelectorAll('.family-card');
+            cards.forEach((card, index) => {
+                const h3 = card.querySelector('h3');
+                if (h3) h3.textContent = `Family Member ${index + 1}`;
+            });
+            familyMemberCount = document.querySelectorAll('.family-card').length;
+        }
+
+        /* ---------- preload UI from existing ---------- */
+        document.addEventListener('DOMContentLoaded', function () {
+            // preload head docs
+            if (Array.isArray(existingHeadDocs)) {
+                existingHeadDocs.forEach(d => {
+                    headDocCount++;
+                    const card = createDocumentCard("Document " + headDocCount, d);
+                    card.querySelector('.doc-remove-btn').addEventListener('click', () => {
+                        card.remove();
+                        renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
+                    });
+                    document.getElementById('headDocumentsContainer').appendChild(card);
+                });
+                renumberDocCards(document.getElementById('headDocumentsContainer'), 'Document');
+            }
+
+            // preload family members + their docs
+            if (Array.isArray(existingFamily)) {
+                existingFamily.forEach(fm => addFamilyCard({
+                    name: fm.name || '',
+                    relationship: fm.relationship || '',
+                    dob: fm.dob || '',
+                    gender: fm.gender || '',
+                    phone: fm.phone || '',
+                    email: fm.email || '',
+                    father_name: fm.father_name || '',
+                    status: fm.status || '',
+                }, fm.id || null));
+            }
+
+            // Setup all validations
+            setupAllValidations();
         });
 
-        // collect family + docs
-        const familyMembersData = [];
-        document.querySelectorAll('.family-card').forEach(card => {
-            const nameEl = card.querySelector('.fm-name');
-            const relEl = card.querySelector('.fm-relationship');
-            const dobEl = card.querySelector('.fm-dob');
-            const genderEl = card.querySelector('.fm-gender');
-            const phoneEl = card.querySelector('.fm-phone');
-            const emailEl = card.querySelector('.fm-email');
-            const fatherEl = card.querySelector('.fm-father-name');
+        /* ---------- reset ---------- */
+        document.getElementById('clearBtn').addEventListener('click', function () {
+            if (!confirm('Reset changes to original values?')) return;
+            window.location.reload();
+        });
 
-            const docs = [];
-            card.querySelectorAll('.fm-docs-container .doc-card').forEach(dCard => {
-                const type = dCard.querySelector('.doc-type')?.value || '';
-                const number = dCard.querySelector('.doc-number')?.value.trim() || '';
-                const nameOn = dCard.querySelector('.doc-name')?.value.trim() || '';
-                const issuedBy = dCard.querySelector('.doc-issued-by')?.value.trim() || '';
-                const issuedOn = dCard.querySelector('.doc-issued-on')?.value || '';
-                const expiryOn = dCard.querySelector('.doc-expiry-on')?.value || '';
-                const notes = dCard.querySelector('.doc-notes')?.value.trim() || '';
+        /* ---------- submit ---------- */
+        document.getElementById('sahakariForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            if (!validateForm()) return;
+
+            // collect head docs
+            const headDocs = [];
+            document.querySelectorAll('#headDocumentsContainer .doc-card').forEach(card => {
+                const type = card.querySelector('.doc-type')?.value || '';
+                const number = card.querySelector('.doc-number')?.value.trim() || '';
+                const nameOn = card.querySelector('.doc-name')?.value.trim() || '';
+                const issuedBy = card.querySelector('.doc-issued-by')?.value.trim() || '';
+                const issuedOn = card.querySelector('.doc-issued-on')?.value || '';
+                const expiryOn = card.querySelector('.doc-expiry-on')?.value || '';
+                const notes = card.querySelector('.doc-notes')?.value.trim() || '';
+
                 if (type || number) {
-                    docs.push({ doc_type:type, doc_number:number, name_on_doc:nameOn, issued_by:issuedBy, issued_on:issuedOn, expiry_on:expiryOn, notes:notes });
+                    headDocs.push({
+                        doc_type: type,
+                        doc_number: number,
+                        name_on_doc: nameOn,
+                        issued_by: issuedBy,
+                        issued_on: issuedOn,
+                        expiry_on: expiryOn,
+                        notes: notes
+                    });
                 }
             });
 
-            familyMembersData.push({
-                name: nameEl ? nameEl.value.trim() : '',
-                relationship: relEl ? relEl.value : '',
-                father_name: fatherEl ? fatherEl.value.trim() : '',
-                dob: dobEl ? dobEl.value : '',
-                gender: genderEl ? genderEl.value : '',
-                phone: phoneEl ? phoneEl.value.trim() : '',
-                email: emailEl ? emailEl.value.trim() : '',
-                status: card.querySelector('.fm-status') ? card.querySelector('.fm-status').value : 'active',
-                documents: docs
-            });
-        });
+            // collect family + docs
+            const familyMembersData = [];
+            document.querySelectorAll('.family-card').forEach(card => {
+                const nameEl = card.querySelector('.fm-name');
+                const relEl = card.querySelector('.fm-relationship');
+                const dobEl = card.querySelector('.fm-dob');
+                const genderEl = card.querySelector('.fm-gender');
+                const phoneEl = card.querySelector('.fm-phone');
+                const emailEl = card.querySelector('.fm-email');
+                const fatherEl = card.querySelector('.fm-father-name');
 
-        const form = this;
-        const formData = new FormData(form);
-        formData.append('family_members', JSON.stringify(familyMembersData));
-        formData.append('head_documents', JSON.stringify(headDocs));
-
-        document.getElementById('loadingBox').classList.add('active');
-        hideAlert();
-
-        fetch('edit_sahakari.php', {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin'
-        })
-        .then(response => {
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                return response.text().then(text => {
-                    throw new Error('Server returned non-JSON: ' + text.substring(0, 200));
+                const docs = [];
+                card.querySelectorAll('.fm-docs-container .doc-card').forEach(dCard => {
+                    const type = dCard.querySelector('.doc-type')?.value || '';
+                    const number = dCard.querySelector('.doc-number')?.value.trim() || '';
+                    const nameOn = dCard.querySelector('.doc-name')?.value.trim() || '';
+                    const issuedBy = dCard.querySelector('.doc-issued-by')?.value.trim() || '';
+                    const issuedOn = dCard.querySelector('.doc-issued-on')?.value || '';
+                    const expiryOn = dCard.querySelector('.doc-expiry-on')?.value || '';
+                    const notes = dCard.querySelector('.doc-notes')?.value.trim() || '';
+                    if (type || number) {
+                        docs.push({ doc_type: type, doc_number: number, name_on_doc: nameOn, issued_by: issuedBy, issued_on: issuedOn, expiry_on: expiryOn, notes: notes });
+                    }
                 });
-            }
-            return response.json();
-        })
-        .then(data => {
-            document.getElementById('loadingBox').classList.remove('active');
-            if (data.success) {
-                showAlert('success', data.message);
-                setTimeout(() => {
-                    window.location.href = 'sahakari_details.php?id=' + (form.member_id.value || '<?php echo (int)$member['id']; ?>');
-                }, 800);
-            } else {
-                showAlert('error', 'Error: ' + data.message);
-            }
-        })
-        .catch(err => {
-            document.getElementById('loadingBox').classList.remove('active');
-            showAlert('error', 'An error occurred: ' + err.message);
-            console.error(err);
+
+                familyMembersData.push({
+                    name: nameEl ? nameEl.value.trim() : '',
+                    relationship: relEl ? relEl.value : '',
+                    father_name: fatherEl ? fatherEl.value.trim() : '',
+                    dob: dobEl ? dobEl.value : '',
+                    gender: genderEl ? genderEl.value : '',
+                    phone: phoneEl ? phoneEl.value.trim() : '',
+                    email: emailEl ? emailEl.value.trim() : '',
+                    status: card.querySelector('.fm-status') ? card.querySelector('.fm-status').value : 'active',
+                    documents: docs
+                });
+            });
+
+            const form = this;
+            const formData = new FormData(form);
+            formData.append('family_members', JSON.stringify(familyMembersData));
+            formData.append('head_documents', JSON.stringify(headDocs));
+
+            document.getElementById('loadingBox').classList.add('active');
+            hideAlert();
+
+            fetch('edit_sahakari.php', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            })
+                .then(response => {
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        return response.text().then(text => {
+                            throw new Error('Server returned non-JSON: ' + text.substring(0, 200));
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('loadingBox').classList.remove('active');
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => {
+                            window.location.href = 'sahakari_details.php?id=' + (form.member_id.value || '<?php echo (int) $member['id']; ?>');
+                        }, 800);
+                    } else {
+                        showAlert('error', 'Error: ' + data.message);
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('loadingBox').classList.remove('active');
+                    showAlert('error', 'An error occurred: ' + err.message);
+                    console.error(err);
+                });
         });
-    });
 
-    /* ---------- Validate form for submission ---------- */
-    function validateForm() {
-        let isValid = true;
+        /* ---------- Validate form for submission ---------- */
+        function validateForm() {
+            let isValid = true;
 
-        // Validate required fields for HEAD SECTION - ALL ARE REQUIRED
-        const requiredValidations = [
-            { id: 'head_name', fn: validateName, errorId: 'head_name_error', msg: 'Head of family name is required (only letters and spaces allowed, min 2 characters)!', required: true },
-            { id: 'head_father_name', fn: validateFatherName, errorId: 'head_father_name_error', msg: 'Father\'s name is required (only letters and spaces allowed, min 2 characters)!', required: true },
-            { id: 'member_number', fn: validateMemberNumber, errorId: 'member_number_error', msg: 'Member number is required and must be a positive whole number (1, 2, 3, ...).', required: true },
-            { id: 'head_email', fn: validateEmail, errorId: 'head_email_error', msg: 'Email is required. Please enter a valid email address (must contain @ and .com/.in/.org etc.)!', required: true },
-            { id: 'head_phone', fn: validatePhone, errorId: 'head_phone_error', msg: 'Phone number is required. Invalid Indian mobile number. Expected 10 digits starting 6-9 (optional +91).', required: true },
-            { id: 'head_dob', fn: validateDateNotFuture, errorId: 'head_dob_error', msg: 'Date of Birth is required and cannot be in future.', required: true },
-            { id: 'head_address', fn: validateAddress, errorId: 'head_address_error', msg: 'Address is required (min 10 characters).', required: true },
-            { id: 'join_date', fn: validateDateNotFuture, errorId: 'join_date_error', msg: 'Join date is required and cannot be in future.', required: true },
-            { id: 'monthly_fee', fn: validateMonthlyFee, errorId: 'monthly_fee_error', msg: 'Monthly fee is required (must be a positive number).', required: true },
-            { id: 'total_due', fn: validatePositiveNumber, errorId: 'total_due_error', msg: 'Total due is required (must be a positive number).', required: true }
-        ];
+            // Validate required fields for HEAD SECTION - ALL ARE REQUIRED
+            const requiredValidations = [
+                { id: 'head_name', fn: validateName, errorId: 'head_name_error', msg: 'Head of family name is required (only letters and spaces allowed, min 2 characters)!', required: true },
+                { id: 'head_father_name', fn: validateFatherName, errorId: 'head_father_name_error', msg: 'Father\'s name is required (only letters and spaces allowed, min 2 characters)!', required: true },
+                { id: 'member_number', fn: validateMemberNumber, errorId: 'member_number_error', msg: 'Member number is required and must be a positive whole number (1, 2, 3, ...).', required: true },
+                { id: 'head_email', fn: validateEmail, errorId: 'head_email_error', msg: 'Email is required. Please enter a valid email address (must contain @ and .com/.in/.org etc.)!', required: true },
+                { id: 'head_phone', fn: validatePhone, errorId: 'head_phone_error', msg: 'Phone number is required. Invalid Indian mobile number. Expected 10 digits starting 6-9 (optional +91).', required: true },
+                { id: 'head_dob', fn: validateDateNotFuture, errorId: 'head_dob_error', msg: 'Date of Birth is required and cannot be in future.', required: true },
+                { id: 'head_address', fn: validateAddress, errorId: 'head_address_error', msg: 'Address is required (min 10 characters).', required: true },
+                { id: 'join_date', fn: validateDateNotFuture, errorId: 'join_date_error', msg: 'Join date is required and cannot be in future.', required: true },
+                { id: 'monthly_fee', fn: validateMonthlyFee, errorId: 'monthly_fee_error', msg: 'Monthly fee is required (must be a positive number).', required: true },
+                { id: 'total_due', fn: validatePositiveNumber, errorId: 'total_due_error', msg: 'Total due is required (must be a positive number).', required: true }
+            ];
 
-        for (const validation of requiredValidations) {
-            if (!validateFormField(validation.id, validation.fn, validation.errorId, validation.msg, validation.required)) {
-                isValid = false;
-            }
-        }
-
-        // Validate required dropdowns for HEAD SECTION - ALL ARE REQUIRED
-        const genderSelect = document.getElementById('head_gender');
-        if (genderSelect) {
-            if (genderSelect.value === '') {
-                genderSelect.classList.add('invalid');
-                const errorElement = document.getElementById('head_gender_error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                    errorElement.textContent = 'Gender is required. Please select a gender.';
-                }
-                genderSelect.focus();
-                isValid = false;
-            }
-        }
-
-        const occupationSelect = document.getElementById('head_occupation');
-        if (occupationSelect) {
-            if (occupationSelect.value === '') {
-                occupationSelect.classList.add('invalid');
-                const errorElement = document.getElementById('head_occupation_error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                    errorElement.textContent = 'Occupation is required. Please select an occupation.';
-                }
-                occupationSelect.focus();
-                isValid = false;
-            }
-        }
-
-        const statusSelect = document.getElementById('member_status');
-        if (statusSelect) {
-            if (statusSelect.value === '') {
-                statusSelect.classList.add('invalid');
-                const errorElement = document.getElementById('member_status_error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                    errorElement.textContent = 'Member status is required. Please select member status.';
-                }
-                statusSelect.focus();
-                isValid = false;
-            }
-        }
-
-        const donationSelect = document.getElementById('monthly_donation_due');
-        if (donationSelect) {
-            if (donationSelect.value === '') {
-                donationSelect.classList.add('invalid');
-                const errorElement = document.getElementById('monthly_donation_due_error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                    errorElement.textContent = 'Monthly donation status is required. Please select donation status.';
-                }
-                donationSelect.focus();
-                isValid = false;
-            }
-        }
-
-        // Validate family members - NAME AND RELATIONSHIP ARE REQUIRED
-        const cards = document.querySelectorAll('.family-card');
-        cards.forEach(card => strengthenFamilyInputs(card));
-        for (let i = 0; i < cards.length; i++) {
-            const idx = i + 1;
-            const nameEl = cards[i].querySelector('.fm-name');
-            const relationEl = cards[i].querySelector('.fm-relationship');
-
-            // REQUIRED: Name
-            const nm = nameEl?.value.trim() || '';
-            if (!nm) { 
-                showAlert('error', `Name is required for Family Member ${idx}.`); 
-                nameEl?.focus(); 
-                return false; 
-            }
-
-            // Name format validation
-            if (!/^[A-Za-z\s\.\-']+$/.test(nm) || nm.length < 2) {
-                showAlert('error', `Family Member ${idx}: Name must contain only letters and spaces and be at least 2 characters.`);
-                nameEl?.focus();
-                return false;
-            }
-
-            // REQUIRED: Relationship
-            const relationVal = relationEl?.value || '';
-            if (!relationVal) { 
-                showAlert('error', `Relationship is required for Family Member ${idx}.`); 
-                relationEl?.focus(); 
-                return false; 
-            }
-
-            // Optional fields validation
-            const phoneVal = cards[i].querySelector('.fm-phone')?.value.trim() || '';
-            if (phoneVal && !isValidIndianPhone(phoneVal)) {
-                showAlert('error', `Family Member ${idx}: Phone number is invalid. Use 10 digits starting 6-9 (optional +91).`);
-                cards[i].querySelector('.fm-phone')?.focus();
-                return false;
-            }
-            
-            const emailVal = cards[i].querySelector('.fm-email')?.value.trim() || '';
-            if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
-                showAlert('error', `Family Member ${idx}: Email looks invalid.`);
-                cards[i].querySelector('.fm-email')?.focus();
-                return false;
-            }
-            
-            // Date of birth validation (if provided)
-            const dobVal = cards[i].querySelector('.fm-dob')?.value || '';
-            if (dobVal) {
-                const d = parseLocalDate(dobVal);
-                if (d && d.getTime() > todayLocalMidnight().getTime()) { 
-                    showAlert('error', `Family Member ${idx} DOB cannot be in the future.`); 
-                    cards[i].querySelector('.fm-dob').focus(); 
-                    return false; 
+            for (const validation of requiredValidations) {
+                if (!validateFormField(validation.id, validation.fn, validation.errorId, validation.msg, validation.required)) {
+                    isValid = false;
                 }
             }
-            
-            // Father's name length check (if provided)
-            const fatherVal = cards[i].querySelector('.fm-father-name')?.value || '';
-            if (fatherVal && fatherVal.length > 255) {
-                showAlert('error', `Family Member ${idx}: Father's name is too long (max 255 chars).`);
-                cards[i].querySelector('.fm-father-name')?.focus(); 
-                return false;
+
+            // Validate required dropdowns for HEAD SECTION - ALL ARE REQUIRED
+            const genderSelect = document.getElementById('head_gender');
+            if (genderSelect) {
+                if (genderSelect.value === '') {
+                    genderSelect.classList.add('invalid');
+                    const errorElement = document.getElementById('head_gender_error');
+                    if (errorElement) {
+                        errorElement.style.display = 'block';
+                        errorElement.textContent = 'Gender is required. Please select a gender.';
+                    }
+                    genderSelect.focus();
+                    isValid = false;
+                }
             }
+
+            const occupationSelect = document.getElementById('head_occupation');
+            if (occupationSelect) {
+                if (occupationSelect.value === '') {
+                    occupationSelect.classList.add('invalid');
+                    const errorElement = document.getElementById('head_occupation_error');
+                    if (errorElement) {
+                        errorElement.style.display = 'block';
+                        errorElement.textContent = 'Occupation is required. Please select an occupation.';
+                    }
+                    occupationSelect.focus();
+                    isValid = false;
+                }
+            }
+
+            const statusSelect = document.getElementById('member_status');
+            if (statusSelect) {
+                if (statusSelect.value === '') {
+                    statusSelect.classList.add('invalid');
+                    const errorElement = document.getElementById('member_status_error');
+                    if (errorElement) {
+                        errorElement.style.display = 'block';
+                        errorElement.textContent = 'Member status is required. Please select member status.';
+                    }
+                    statusSelect.focus();
+                    isValid = false;
+                }
+            }
+
+            const donationSelect = document.getElementById('monthly_donation_due');
+            if (donationSelect) {
+                if (donationSelect.value === '') {
+                    donationSelect.classList.add('invalid');
+                    const errorElement = document.getElementById('monthly_donation_due_error');
+                    if (errorElement) {
+                        errorElement.style.display = 'block';
+                        errorElement.textContent = 'Monthly donation status is required. Please select donation status.';
+                    }
+                    donationSelect.focus();
+                    isValid = false;
+                }
+            }
+
+            // Validate family members - NAME AND RELATIONSHIP ARE REQUIRED
+            const cards = document.querySelectorAll('.family-card');
+            cards.forEach(card => strengthenFamilyInputs(card));
+            for (let i = 0; i < cards.length; i++) {
+                const idx = i + 1;
+                const nameEl = cards[i].querySelector('.fm-name');
+                const relationEl = cards[i].querySelector('.fm-relationship');
+
+                // REQUIRED: Name
+                const nm = nameEl?.value.trim() || '';
+                if (!nm) {
+                    showAlert('error', `Name is required for Family Member ${idx}.`);
+                    nameEl?.focus();
+                    return false;
+                }
+
+                // Name format validation
+                if (!/^[A-Za-z\s\.\-']+$/.test(nm) || nm.length < 2) {
+                    showAlert('error', `Family Member ${idx}: Name must contain only letters and spaces and be at least 2 characters.`);
+                    nameEl?.focus();
+                    return false;
+                }
+
+                // REQUIRED: Relationship
+                const relationVal = relationEl?.value || '';
+                if (!relationVal) {
+                    showAlert('error', `Relationship is required for Family Member ${idx}.`);
+                    relationEl?.focus();
+                    return false;
+                }
+
+                // Optional fields validation
+                const phoneVal = cards[i].querySelector('.fm-phone')?.value.trim() || '';
+                if (phoneVal && !isValidIndianPhone(phoneVal)) {
+                    showAlert('error', `Family Member ${idx}: Phone number is invalid. Use 10 digits starting 6-9 (optional +91).`);
+                    cards[i].querySelector('.fm-phone')?.focus();
+                    return false;
+                }
+
+                const emailVal = cards[i].querySelector('.fm-email')?.value.trim() || '';
+                if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+                    showAlert('error', `Family Member ${idx}: Email looks invalid.`);
+                    cards[i].querySelector('.fm-email')?.focus();
+                    return false;
+                }
+
+                // Date of birth validation (if provided)
+                const dobVal = cards[i].querySelector('.fm-dob')?.value || '';
+                if (dobVal) {
+                    const d = parseLocalDate(dobVal);
+                    if (d && d.getTime() > todayLocalMidnight().getTime()) {
+                        showAlert('error', `Family Member ${idx} DOB cannot be in the future.`);
+                        cards[i].querySelector('.fm-dob').focus();
+                        return false;
+                    }
+                }
+
+                // Father's name length check (if provided)
+                const fatherVal = cards[i].querySelector('.fm-father-name')?.value || '';
+                if (fatherVal && fatherVal.length > 255) {
+                    showAlert('error', `Family Member ${idx}: Father's name is too long (max 255 chars).`);
+                    cards[i].querySelector('.fm-father-name')?.focus();
+                    return false;
+                }
+            }
+
+            // documents validation + duplicates
+            const seen = new Set();
+            const allDocCards = Array.from(document.querySelectorAll('#headDocumentsContainer .doc-card'))
+                .concat(Array.from(document.querySelectorAll('.fm-docs-container .doc-card')));
+
+            for (let i = 0; i < allDocCards.length; i++) {
+                const c = allDocCards[i];
+                const type = c.querySelector('.doc-type')?.value || '';
+                const number = c.querySelector('.doc-number')?.value.trim() || '';
+                const issuedOn = c.querySelector('.doc-issued-on')?.value || '';
+                const expiryOn = c.querySelector('.doc-expiry-on')?.value || '';
+
+                if ((type && !number) || (!type && number)) {
+                    showAlert('error', 'Each document row requires BOTH Type and Number.');
+                    (c.querySelector('.doc-number') || c.querySelector('.doc-type')).focus();
+                    return false;
+                }
+                if (!type && !number) continue;
+
+                if (!validateDocByType(type, number)) {
+                    showAlert('error', `Document "${type}" has an invalid number format.`);
+                    c.querySelector('.doc-number')?.focus();
+                    return false;
+                }
+
+                const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+                if (issuedOn) {
+                    const io = new Date(issuedOn);
+                    if (io > t0) { showAlert('error', `Issued On for ${type} cannot be in the future.`); c.querySelector('.doc-issued-on')?.focus(); return false; }
+                }
+                if (expiryOn && issuedOn) {
+                    const ex = new Date(expiryOn), io = new Date(issuedOn);
+                    if (ex < io) { showAlert('error', `Expiry On for ${type} cannot be before Issued On.`); c.querySelector('.doc-expiry-on')?.focus(); return false; }
+                }
+
+                const key = (type.toLowerCase() + '|' + normalizeDocNumber(number));
+                if (seen.has(key)) {
+                    showAlert('error', `Duplicate ${type} number detected in documents.`);
+                    c.querySelector('.doc-number')?.focus(); return false;
+                }
+                seen.add(key);
+            }
+
+            return isValid;
         }
 
-        // documents validation + duplicates
-        const seen = new Set();
-        const allDocCards = Array.from(document.querySelectorAll('#headDocumentsContainer .doc-card'))
-            .concat(Array.from(document.querySelectorAll('.fm-docs-container .doc-card')));
-
-        for (let i = 0; i < allDocCards.length; i++) {
-            const c = allDocCards[i];
-            const type   = c.querySelector('.doc-type')?.value || '';
-            const number = c.querySelector('.doc-number')?.value.trim() || '';
-            const issuedOn = c.querySelector('.doc-issued-on')?.value || '';
-            const expiryOn = c.querySelector('.doc-expiry-on')?.value || '';
-
-            if ((type && !number) || (!type && number)) {
-                showAlert('error', 'Each document row requires BOTH Type and Number.');
-                (c.querySelector('.doc-number') || c.querySelector('.doc-type')).focus();
-                return false;
-            }
-            if (!type && !number) continue;
-
-            if (!validateDocByType(type, number)) {
-                showAlert('error', `Document "${type}" has an invalid number format.`);
-                c.querySelector('.doc-number')?.focus();
-                return false;
-            }
-
-            const t0 = new Date(); t0.setHours(0,0,0,0);
-            if (issuedOn) {
-                const io = new Date(issuedOn);
-                if (io > t0) { showAlert('error', `Issued On for ${type} cannot be in the future.`); c.querySelector('.doc-issued-on')?.focus(); return false; }
-            }
-            if (expiryOn && issuedOn) {
-                const ex = new Date(expiryOn), io = new Date(issuedOn);
-                if (ex < io) { showAlert('error', `Expiry On for ${type} cannot be before Issued On.`); c.querySelector('.doc-expiry-on')?.focus(); return false; }
-            }
-
-            const key = (type.toLowerCase() + '|' + normalizeDocNumber(number));
-            if (seen.has(key)) {
-                showAlert('error', `Duplicate ${type} number detected in documents.`);
-                c.querySelector('.doc-number')?.focus(); return false;
-            }
-            seen.add(key);
+        function showAlert(type, message) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = 'alert alert-' + (type === 'success' ? 'success-form' : 'error-form') + ' show';
+            alertBox.textContent = message;
+            alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
-        return isValid;
-    }
+        function hideAlert() {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.classList.remove('show');
+        }
 
-    function showAlert(type, message) {
-        const alertBox = document.getElementById('alertBox');
-        alertBox.className = 'alert alert-' + (type === 'success' ? 'success-form' : 'error-form') + ' show';
-        alertBox.textContent = message;
-        alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    
-    function hideAlert() {
-        const alertBox = document.getElementById('alertBox');
-        alertBox.classList.remove('show');
-    }
+        // Sidebar functionality
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const toggle = document.getElementById('menuToggle');
+        const closeBtn = document.getElementById('sidebarClose');
 
-    // Sidebar functionality
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const toggle = document.getElementById('menuToggle');
-    const closeBtn = document.getElementById('sidebarClose');
+        function openSidebar() {
+            sidebar.classList.add('open');
+            overlay.classList.add('show');
+            overlay.hidden = false;
+            document.body.classList.add('no-scroll');
+            toggle.setAttribute('aria-expanded', 'true');
+            sidebar.setAttribute('aria-hidden', 'false');
+        }
 
-    function openSidebar() {
-        sidebar.classList.add('open');
-        overlay.classList.add('show');
-        overlay.hidden = false;
-        document.body.classList.add('no-scroll');
-        toggle.setAttribute('aria-expanded', 'true');
-        sidebar.setAttribute('aria-hidden', 'false');
-    }
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+            document.body.classList.remove('no-scroll');
+            toggle.setAttribute('aria-expanded', 'false');
+            sidebar.setAttribute('aria-hidden', 'true');
+            setTimeout(() => { overlay.hidden = true; }, 200);
+        }
 
-    function closeSidebar() {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('show');
-        document.body.classList.remove('no-scroll');
-        toggle.setAttribute('aria-expanded', 'false');
-        sidebar.setAttribute('aria-hidden', 'true');
-        setTimeout(() => { overlay.hidden = true; }, 200);
-    }
-
-    toggle.addEventListener('click', () => {
-        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-    });
-
-    closeBtn.addEventListener('click', closeSidebar);
-    overlay.addEventListener('click', closeSidebar);
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
-    });
-
-    // Navigation handlers
-    document.getElementById('member-manage-btn').addEventListener('click', () => {
-        window.location.href = 'member-management.php';
-    });
-    
-    document.getElementById('sahakari-manage-btn').addEventListener('click', () => {
-        window.location.href = 'sahakari_management.php';
-    });
-    
-    document.getElementById('certificate-manage-btn').addEventListener('click', () => {
-        window.location.href = 'certificate.php';
-    });
-    
-    document.getElementById('finance-tracking-btn').addEventListener('click', () => {
-        window.location.href = 'finance-tracking.php';
-    });
-
-    document.getElementById('staff-manage-btn').addEventListener('click', () => {
-        window.location.href = 'staff-management.php';
-    });
-
-    document.querySelectorAll('.menu-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            if (!this.hasAttribute('onclick')) {
-                document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            }
+        toggle.addEventListener('click', () => {
+            sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
         });
-    });
-</script>
+
+        closeBtn.addEventListener('click', closeSidebar);
+        overlay.addEventListener('click', closeSidebar);
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+        });
+
+        // Navigation handlers
+        document.getElementById('member-manage-btn').addEventListener('click', () => {
+            window.location.href = 'member-management.php';
+        });
+
+        document.getElementById('sahakari-manage-btn').addEventListener('click', () => {
+            window.location.href = 'sahakari_management.php';
+        });
+
+        document.getElementById('certificate-manage-btn').addEventListener('click', () => {
+            window.location.href = 'certificate.php';
+        });
+
+        document.getElementById('finance-tracking-btn').addEventListener('click', () => {
+            window.location.href = 'finance-tracking.php';
+        });
+
+        document.getElementById('staff-manage-btn').addEventListener('click', () => {
+            window.location.href = 'staff-management.php';
+        });
+
+        document.querySelectorAll('.menu-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                if (!this.hasAttribute('onclick')) {
+                    document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                }
+            });
+        });
+    </script>
 </body>
+
 </html>
