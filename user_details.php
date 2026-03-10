@@ -1784,9 +1784,9 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
 
                         <!-- Father's name (if available) -->
                         <?php if (!empty($member['father_name'])): ?>
-                                <div style="color: rgba(232,240,255,0.95); margin-top:6px; font-weight:500;">
-                                    S/O: <?php echo htmlspecialchars($member['father_name']); ?>
-                                </div>
+                            <div style="color: rgba(232,240,255,0.95); margin-top:6px; font-weight:500;">
+                                S/O: <?php echo htmlspecialchars($member['father_name']); ?>
+                            </div>
                         <?php endif; ?>
 
                         <!-- Meta row: Member ID • Joined • Documents -->
@@ -1806,10 +1806,10 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                             </div>
 
                             <?php if (!empty($member['join_date'])): ?>
-                                    <div class="member-meta-item" title="Joined">
-                                        <i class="fas fa-calendar-plus"></i>
-                                        <span>Joined: <?php echo date('M j, Y', strtotime($member['join_date'])); ?></span>
-                                    </div>
+                                <div class="member-meta-item" title="Joined">
+                                    <i class="fas fa-calendar-plus"></i>
+                                    <span>Joined: <?php echo date('M j, Y', strtotime($member['join_date'])); ?></span>
+                                </div>
                             <?php endif; ?>
 
                             <div class="member-meta-item" title="Total documents for this household">
@@ -1854,7 +1854,13 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                                 <div class="stat-item monthly">
                                     <div class="stat-amount">
                                         ₹<?php echo number_format((float) ($member['total_due'] ?? 0), 2); ?></div>
-                                    <div class="stat-label">Total Due</div>
+                                    <div class="stat-label">Monthly Due</div>
+                                </div>
+                                <div class="stat-item custom-due"
+                                    style="background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2);">
+                                    <div class="stat-amount" style="color: var(--warning);">
+                                        ₹<?php echo number_format((float) ($member['custom_due'] ?? 0), 2); ?></div>
+                                    <div class="stat-label">Custom Due</div>
                                 </div>
                                 <div class="stat-item advance">
                                     <div class="stat-amount">
@@ -1891,11 +1897,11 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
 
                                         <!-- Father's name as its own row (if available) -->
                                         <?php if (!empty($member['father_name'])): ?>
-                                                <div class="info-row">
-                                                    <span class="info-label"><i class="fas fa-user"></i> Father's Name</span>
-                                                    <span
-                                                        class="info-value"><?php echo htmlspecialchars($member['father_name']); ?></span>
-                                                </div>
+                                            <div class="info-row">
+                                                <span class="info-label"><i class="fas fa-user"></i> Father's Name</span>
+                                                <span
+                                                    class="info-value"><?php echo htmlspecialchars($member['father_name']); ?></span>
+                                            </div>
                                         <?php endif; ?>
 
                                         <div class="info-row">
@@ -1982,56 +1988,56 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                                 </div>
 
                                 <?php if (!empty($financial_stats['recent_transactions'])): ?>
-                                        <div class="table-container">
-                                            <table class="transactions-table">
-                                                <thead>
+                                    <div class="table-container">
+                                        <table class="transactions-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Type</th>
+                                                    <th>Category</th>
+                                                    <th>Description</th>
+                                                    <th>Amount</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($financial_stats['recent_transactions'] as $transaction): ?>
                                                     <tr>
-                                                        <th>Date</th>
-                                                        <th>Type</th>
-                                                        <th>Category</th>
-                                                        <th>Description</th>
-                                                        <th>Amount</th>
-                                                        <th>Actions</th>
+                                                        <td data-label="Date" style="font-weight: 500;">
+                                                            <?php echo date('M j, Y', strtotime($transaction['transaction_date'])); ?>
+                                                        </td>
+                                                        <td data-label="Type">
+                                                            <span
+                                                                class="transaction-type type-<?php echo strtolower($transaction['type']); ?>">
+                                                                <?php echo htmlspecialchars($transaction['type']); ?>
+                                                            </span>
+                                                        </td>
+                                                        <td data-label="Category" class="transaction-category">
+                                                            <?php echo htmlspecialchars($transaction['category']); ?>
+                                                        </td>
+                                                        <td data-label="Description" class="transaction-description">
+                                                            <?php echo htmlspecialchars($transaction['description'] ?? '-'); ?>
+                                                        </td>
+                                                        <td data-label="Amount"
+                                                            class="transaction-amount amount-<?php echo strtolower($transaction['type']); ?>">
+                                                            ₹<?php echo number_format($transaction['amount'], 2); ?>
+                                                        </td>
+                                                        <td data-label="Actions" class="transaction-actions">
+                                                            <button class="action-btn receipt-btn" title="View Receipt"
+                                                                onclick="openReceipt(<?php echo (int) $transaction['id']; ?>)">
+                                                                🧾
+                                                            </button>
+                                                        </td>
                                                     </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <?php foreach ($financial_stats['recent_transactions'] as $transaction): ?>
-                                                            <tr>
-                                                                <td data-label="Date" style="font-weight: 500;">
-                                                                    <?php echo date('M j, Y', strtotime($transaction['transaction_date'])); ?>
-                                                                </td>
-                                                                <td data-label="Type">
-                                                                    <span
-                                                                        class="transaction-type type-<?php echo strtolower($transaction['type']); ?>">
-                                                                        <?php echo htmlspecialchars($transaction['type']); ?>
-                                                                    </span>
-                                                                </td>
-                                                                <td data-label="Category" class="transaction-category">
-                                                                    <?php echo htmlspecialchars($transaction['category']); ?>
-                                                                </td>
-                                                                <td data-label="Description" class="transaction-description">
-                                                                    <?php echo htmlspecialchars($transaction['description'] ?? '-'); ?>
-                                                                </td>
-                                                                <td data-label="Amount"
-                                                                    class="transaction-amount amount-<?php echo strtolower($transaction['type']); ?>">
-                                                                    ₹<?php echo number_format($transaction['amount'], 2); ?>
-                                                                </td>
-                                                                <td data-label="Actions" class="transaction-actions">
-                                                                    <button class="action-btn receipt-btn" title="View Receipt"
-                                                                        onclick="openReceipt(<?php echo (int) $transaction['id']; ?>)">
-                                                                        🧾
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                    <?php endforeach; ?>
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 <?php else: ?>
-                                        <div class="empty-state">
-                                            <i class="fas fa-receipt"></i>
-                                            <p>No transactions found for this member.</p>
-                                        </div>
+                                    <div class="empty-state">
+                                        <i class="fas fa-receipt"></i>
+                                        <p>No transactions found for this member.</p>
+                                    </div>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -2054,120 +2060,120 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                         </div>
                         <div class="card-body">
                             <?php if (!empty($family_members)): ?>
-                                    <div class="family-grid">
-                                        <?php foreach ($family_members as $family_member):
-                                            $fid = (int) $family_member['id'];
-                                            $docCount = isset($family_docs_by_member[$fid]) ? count($family_docs_by_member[$fid]['docs']) : 0;
-                                            $familyStatus = $family_member['status'] ?? 'active';
-                                            ?>
-                                                <div class="family-member">
-                                                    <div class="member-header-row">
-                                                        <div class="member-name">
-                                                            <i class="fas fa-user"></i>
-                                                            <?php echo htmlspecialchars($family_member['name']); ?>
-                                                            <?php if ($docCount > 0): ?>
-                                                                    <span class="doc-badge" title="Documents attached">
-                                                                        <i class="fas fa-file"></i><?php echo $docCount; ?>
-                                                                    </span>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                        <div
-                                                            class="status-badge status-<?php echo htmlspecialchars(strtolower($familyStatus)); ?>">
-                                                            <?php echo getStatusText($familyStatus); ?>
-                                                        </div>
-                                                    </div>
-                                                    <div class="member-relationship">
-                                                        <?php echo htmlspecialchars($family_member['relationship']); ?>
-                                                    </div>
-                                                    <div class="member-details">
-                                                        <?php if ($family_member['dob']): ?>
-                                                                <div class="member-detail">
-                                                                    <i class="fas fa-calendar"></i>
-                                                                    <?php echo date('M j, Y', strtotime($family_member['dob'])); ?>
-                                                                </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($family_member['gender']): ?>
-                                                                <div class="member-detail">
-                                                                    <i class="fas fa-venus-mars"></i>
-                                                                    <?php echo htmlspecialchars($family_member['gender']); ?>
-                                                                </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($family_member['phone']): ?>
-                                                                <div class="member-detail">
-                                                                    <i class="fas fa-phone"></i>
-                                                                    <?php echo htmlspecialchars($family_member['phone']); ?>
-                                                                </div>
-                                                        <?php endif; ?>
-                                                        <?php if ($family_member['email']): ?>
-                                                                <div class="member-detail">
-                                                                    <i class="fas fa-envelope"></i>
-                                                                    <?php echo htmlspecialchars($family_member['email']); ?>
-                                                                </div>
-                                                        <?php endif; ?>
-                                                    </div>
-
+                                <div class="family-grid">
+                                    <?php foreach ($family_members as $family_member):
+                                        $fid = (int) $family_member['id'];
+                                        $docCount = isset($family_docs_by_member[$fid]) ? count($family_docs_by_member[$fid]['docs']) : 0;
+                                        $familyStatus = $family_member['status'] ?? 'active';
+                                        ?>
+                                        <div class="family-member">
+                                            <div class="member-header-row">
+                                                <div class="member-name">
+                                                    <i class="fas fa-user"></i>
+                                                    <?php echo htmlspecialchars($family_member['name']); ?>
                                                     <?php if ($docCount > 0): ?>
-                                                            <div class="docs-list" style="margin-top:0.6rem;">
-                                                                <?php foreach ($family_docs_by_member[$fid]['docs'] as $doc): ?>
-                                                                        <div class="doc-item">
-                                                                            <div class="doc-left">
-                                                                                <div class="doc-topline">
-                                                                                    <span
-                                                                                        class="doc-type"><?php echo htmlspecialchars($doc['doc_type']); ?></span>
-                                                                                    <span
-                                                                                        class="doc-number"><?php echo htmlspecialchars(strtoupper($doc['doc_number'])); ?></span>
-                                                                                </div>
-                                                                                <div class="doc-meta">
-                                                                                    <?php if (!empty($doc['name_on_doc'])): ?>
-                                                                                            <span title="Name on Document"><i class="fas fa-id-card-clip"></i>
-                                                                                                <?php echo htmlspecialchars($doc['name_on_doc']); ?></span>
-                                                                                    <?php endif; ?>
-                                                                                    <?php if (!empty($doc['issued_by'])): ?>
-                                                                                            <span title="Issued By"><i class="fas fa-building"></i>
-                                                                                                <?php echo htmlspecialchars($doc['issued_by']); ?></span>
-                                                                                    <?php endif; ?>
-                                                                                    <?php if (!empty($doc['issued_on'])): ?>
-                                                                                            <span title="Issued On"><i class="fas fa-calendar-check"></i>
-                                                                                                <?php echo date('M j, Y', strtotime($doc['issued_on'])); ?></span>
-                                                                                    <?php endif; ?>
-                                                                                    <?php if (!empty($doc['expiry_on'])): ?>
-                                                                                            <span title="Expiry On"><i class="fas fa-calendar-xmark"></i>
-                                                                                                <?php echo date('M j, Y', strtotime($doc['expiry_on'])); ?></span>
-                                                                                    <?php endif; ?>
-                                                                                </div>
-                                                                                <?php if (!empty($doc['notes'])): ?>
-                                                                                        <div class="doc-notes"><i class="fas fa-note-sticky"></i>
-                                                                                            <?php echo htmlspecialchars($doc['notes']); ?></div>
-                                                                                <?php endif; ?>
-                                                                            </div>
-                                                                            <div class="doc-actions">
-                                                                                <?php if (!empty($doc['file_path'])): ?>
-                                                                                        <a class="doc-link"
-                                                                                            href="<?php echo htmlspecialchars($doc['file_path']); ?>"
-                                                                                            target="_blank" rel="noopener">
-                                                                                            <i class="fas fa-paperclip"></i> View
-                                                                                        </a>
-                                                                                <?php endif; ?>
-                                                                            </div>
-                                                                        </div>
-                                                                <?php endforeach; ?>
-                                                            </div>
+                                                        <span class="doc-badge" title="Documents attached">
+                                                            <i class="fas fa-file"></i><?php echo $docCount; ?>
+                                                        </span>
                                                     <?php endif; ?>
-
-                                                    <div style="margin-top:8px; display:flex; gap:8px;">
-                                                        <a class="btn btn-primary"
-                                                            href="addmember.php?convert=1&from_family_id=<?php echo (int) $family_member['id']; ?>&parent_member_id=<?php echo (int) $member['id']; ?>">
-                                                            <i class="fas fa-user-plus"></i> Convert to Member
-                                                        </a>
-                                                    </div>
                                                 </div>
-                                        <?php endforeach; ?>
-                                    </div>
+                                                <div
+                                                    class="status-badge status-<?php echo htmlspecialchars(strtolower($familyStatus)); ?>">
+                                                    <?php echo getStatusText($familyStatus); ?>
+                                                </div>
+                                            </div>
+                                            <div class="member-relationship">
+                                                <?php echo htmlspecialchars($family_member['relationship']); ?>
+                                            </div>
+                                            <div class="member-details">
+                                                <?php if ($family_member['dob']): ?>
+                                                    <div class="member-detail">
+                                                        <i class="fas fa-calendar"></i>
+                                                        <?php echo date('M j, Y', strtotime($family_member['dob'])); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if ($family_member['gender']): ?>
+                                                    <div class="member-detail">
+                                                        <i class="fas fa-venus-mars"></i>
+                                                        <?php echo htmlspecialchars($family_member['gender']); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if ($family_member['phone']): ?>
+                                                    <div class="member-detail">
+                                                        <i class="fas fa-phone"></i>
+                                                        <?php echo htmlspecialchars($family_member['phone']); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if ($family_member['email']): ?>
+                                                    <div class="member-detail">
+                                                        <i class="fas fa-envelope"></i>
+                                                        <?php echo htmlspecialchars($family_member['email']); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <?php if ($docCount > 0): ?>
+                                                <div class="docs-list" style="margin-top:0.6rem;">
+                                                    <?php foreach ($family_docs_by_member[$fid]['docs'] as $doc): ?>
+                                                        <div class="doc-item">
+                                                            <div class="doc-left">
+                                                                <div class="doc-topline">
+                                                                    <span
+                                                                        class="doc-type"><?php echo htmlspecialchars($doc['doc_type']); ?></span>
+                                                                    <span
+                                                                        class="doc-number"><?php echo htmlspecialchars(strtoupper($doc['doc_number'])); ?></span>
+                                                                </div>
+                                                                <div class="doc-meta">
+                                                                    <?php if (!empty($doc['name_on_doc'])): ?>
+                                                                        <span title="Name on Document"><i class="fas fa-id-card-clip"></i>
+                                                                            <?php echo htmlspecialchars($doc['name_on_doc']); ?></span>
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($doc['issued_by'])): ?>
+                                                                        <span title="Issued By"><i class="fas fa-building"></i>
+                                                                            <?php echo htmlspecialchars($doc['issued_by']); ?></span>
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($doc['issued_on'])): ?>
+                                                                        <span title="Issued On"><i class="fas fa-calendar-check"></i>
+                                                                            <?php echo date('M j, Y', strtotime($doc['issued_on'])); ?></span>
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($doc['expiry_on'])): ?>
+                                                                        <span title="Expiry On"><i class="fas fa-calendar-xmark"></i>
+                                                                            <?php echo date('M j, Y', strtotime($doc['expiry_on'])); ?></span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                                <?php if (!empty($doc['notes'])): ?>
+                                                                    <div class="doc-notes"><i class="fas fa-note-sticky"></i>
+                                                                        <?php echo htmlspecialchars($doc['notes']); ?></div>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                            <div class="doc-actions">
+                                                                <?php if (!empty($doc['file_path'])): ?>
+                                                                    <a class="doc-link"
+                                                                        href="<?php echo htmlspecialchars($doc['file_path']); ?>"
+                                                                        target="_blank" rel="noopener">
+                                                                        <i class="fas fa-paperclip"></i> View
+                                                                    </a>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php endif; ?>
+
+                                            <div style="margin-top:8px; display:flex; gap:8px;">
+                                                <a class="btn btn-primary"
+                                                    href="addmember.php?convert=1&from_family_id=<?php echo (int) $family_member['id']; ?>&parent_member_id=<?php echo (int) $member['id']; ?>">
+                                                    <i class="fas fa-user-plus"></i> Convert to Member
+                                                </a>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
                             <?php else: ?>
-                                    <div class="empty-state">
-                                        <i class="fas fa-users-slash"></i>
-                                        <p>No family members added yet.</p>
-                                    </div>
+                                <div class="empty-state">
+                                    <i class="fas fa-users-slash"></i>
+                                    <p>No family members added yet.</p>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -2186,55 +2192,55 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                         </div>
                         <div class="card-body">
                             <?php if (!empty($head_documents)): ?>
-                                    <div class="docs-list">
-                                        <?php foreach ($head_documents as $doc): ?>
-                                                <div class="doc-item">
-                                                    <div class="doc-left">
-                                                        <div class="doc-topline">
-                                                            <span
-                                                                class="doc-type"><?php echo htmlspecialchars($doc['doc_type']); ?></span>
-                                                            <span
-                                                                class="doc-number"><?php echo htmlspecialchars(strtoupper($doc['doc_number'])); ?></span>
-                                                        </div>
-                                                        <div class="doc-meta">
-                                                            <?php if (!empty($doc['name_on_doc'])): ?>
-                                                                    <span title="Name on Document"><i class="fas fa-id-card-clip"></i>
-                                                                        <?php echo htmlspecialchars($doc['name_on_doc']); ?></span>
-                                                            <?php endif; ?>
-                                                            <?php if (!empty($doc['issued_by'])): ?>
-                                                                    <span title="Issued By"><i class="fas fa-building"></i>
-                                                                        <?php echo htmlspecialchars($doc['issued_by']); ?></span>
-                                                            <?php endif; ?>
-                                                            <?php if (!empty($doc['issued_on'])): ?>
-                                                                    <span title="Issued On"><i class="fas fa-calendar-check"></i>
-                                                                        <?php echo date('M j, Y', strtotime($doc['issued_on'])); ?></span>
-                                                            <?php endif; ?>
-                                                            <?php if (!empty($doc['expiry_on'])): ?>
-                                                                    <span title="Expiry On"><i class="fas fa-calendar-xmark"></i>
-                                                                        <?php echo date('M j, Y', strtotime($doc['expiry_on'])); ?></span>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                        <?php if (!empty($doc['notes'])): ?>
-                                                                <div class="doc-notes"><i class="fas fa-note-sticky"></i>
-                                                                    <?php echo htmlspecialchars($doc['notes']); ?></div>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                    <div class="doc-actions">
-                                                        <?php if (!empty($doc['file_path'])): ?>
-                                                                <a class="doc-link" href="<?php echo htmlspecialchars($doc['file_path']); ?>"
-                                                                    target="_blank" rel="noopener">
-                                                                    <i class="fas fa-paperclip"></i> View
-                                                                </a>
-                                                        <?php endif; ?>
-                                                    </div>
+                                <div class="docs-list">
+                                    <?php foreach ($head_documents as $doc): ?>
+                                        <div class="doc-item">
+                                            <div class="doc-left">
+                                                <div class="doc-topline">
+                                                    <span
+                                                        class="doc-type"><?php echo htmlspecialchars($doc['doc_type']); ?></span>
+                                                    <span
+                                                        class="doc-number"><?php echo htmlspecialchars(strtoupper($doc['doc_number'])); ?></span>
                                                 </div>
-                                        <?php endforeach; ?>
-                                    </div>
+                                                <div class="doc-meta">
+                                                    <?php if (!empty($doc['name_on_doc'])): ?>
+                                                        <span title="Name on Document"><i class="fas fa-id-card-clip"></i>
+                                                            <?php echo htmlspecialchars($doc['name_on_doc']); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($doc['issued_by'])): ?>
+                                                        <span title="Issued By"><i class="fas fa-building"></i>
+                                                            <?php echo htmlspecialchars($doc['issued_by']); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($doc['issued_on'])): ?>
+                                                        <span title="Issued On"><i class="fas fa-calendar-check"></i>
+                                                            <?php echo date('M j, Y', strtotime($doc['issued_on'])); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($doc['expiry_on'])): ?>
+                                                        <span title="Expiry On"><i class="fas fa-calendar-xmark"></i>
+                                                            <?php echo date('M j, Y', strtotime($doc['expiry_on'])); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if (!empty($doc['notes'])): ?>
+                                                    <div class="doc-notes"><i class="fas fa-note-sticky"></i>
+                                                        <?php echo htmlspecialchars($doc['notes']); ?></div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="doc-actions">
+                                                <?php if (!empty($doc['file_path'])): ?>
+                                                    <a class="doc-link" href="<?php echo htmlspecialchars($doc['file_path']); ?>"
+                                                        target="_blank" rel="noopener">
+                                                        <i class="fas fa-paperclip"></i> View
+                                                    </a>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
                             <?php else: ?>
-                                    <div class="empty-state">
-                                        <i class="fas fa-file-circle-xmark"></i>
-                                        <p>No identity documents added for the head.</p>
-                                    </div>
+                                <div class="empty-state">
+                                    <i class="fas fa-file-circle-xmark"></i>
+                                    <p>No identity documents added for the head.</p>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -2258,66 +2264,66 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                         </div>
                         <div class="card-body">
                             <?php if (!empty($member_offerings)): ?>
-                                    <div style="overflow-x:auto;">
-                                        <table style="width:100%; border-collapse:collapse; font-size:14px;">
-                                            <thead>
-                                                <tr style="background:var(--card-alt);">
-                                                    <th
-                                                        style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
-                                                        Type</th>
-                                                    <th
-                                                        style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
-                                                        Value / Amount</th>
-                                                    <th
-                                                        style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
-                                                        Date</th>
-                                                    <th
-                                                        style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
-                                                        Status</th>
-                                                    <th
-                                                        style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
-                                                        Notes</th>
+                                <div style="overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                                        <thead>
+                                            <tr style="background:var(--card-alt);">
+                                                <th
+                                                    style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
+                                                    Type</th>
+                                                <th
+                                                    style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
+                                                    Value / Amount</th>
+                                                <th
+                                                    style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
+                                                    Date</th>
+                                                <th
+                                                    style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
+                                                    Status</th>
+                                                <th
+                                                    style="padding:10px 12px; text-align:left; font-weight:600; color:var(--text); border-bottom:2px solid var(--border);">
+                                                    Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($member_offerings as $off): ?>
+                                                <?php
+                                                $status_colors = [
+                                                    'pending' => ['bg' => '#fef3c7', 'color' => '#92400e'],
+                                                    'fulfilled' => ['bg' => '#d1fae5', 'color' => '#065f46'],
+                                                    'cancelled' => ['bg' => '#fee2e2', 'color' => '#991b1b'],
+                                                ];
+                                                $sc = $status_colors[$off['status']] ?? ['bg' => '#e5e7eb', 'color' => '#374151'];
+                                                ?>
+                                                <tr style="border-bottom:1px solid var(--border);">
+                                                    <td style="padding:10px 12px; color:var(--text);">
+                                                        <?php echo htmlspecialchars($off['offering_type']); ?>
+                                                    </td>
+                                                    <td style="padding:10px 12px; font-weight:600; color:var(--primary);">
+                                                        <?php echo htmlspecialchars($off['offering_value']); ?>
+                                                    </td>
+                                                    <td style="padding:10px 12px; color:var(--text-light);">
+                                                        <?php echo $off['offering_date'] ? date('M j, Y', strtotime($off['offering_date'])) : '—'; ?>
+                                                    </td>
+                                                    <td style="padding:10px 12px;">
+                                                        <span
+                                                            style="background:<?php echo $sc['bg']; ?>; color:<?php echo $sc['color']; ?>; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; text-transform:uppercase;">
+                                                            <?php echo htmlspecialchars($off['status']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td style="padding:10px 12px; color:var(--text-light); font-size:13px;">
+                                                        <?php echo htmlspecialchars($off['notes'] ?? '—'); ?>
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($member_offerings as $off): ?>
-                                                        <?php
-                                                        $status_colors = [
-                                                            'pending' => ['bg' => '#fef3c7', 'color' => '#92400e'],
-                                                            'fulfilled' => ['bg' => '#d1fae5', 'color' => '#065f46'],
-                                                            'cancelled' => ['bg' => '#fee2e2', 'color' => '#991b1b'],
-                                                        ];
-                                                        $sc = $status_colors[$off['status']] ?? ['bg' => '#e5e7eb', 'color' => '#374151'];
-                                                        ?>
-                                                        <tr style="border-bottom:1px solid var(--border);">
-                                                            <td style="padding:10px 12px; color:var(--text);">
-                                                                <?php echo htmlspecialchars($off['offering_type']); ?>
-                                                            </td>
-                                                            <td style="padding:10px 12px; font-weight:600; color:var(--primary);">
-                                                                <?php echo htmlspecialchars($off['offering_value']); ?>
-                                                            </td>
-                                                            <td style="padding:10px 12px; color:var(--text-light);">
-                                                                <?php echo $off['offering_date'] ? date('M j, Y', strtotime($off['offering_date'])) : '—'; ?>
-                                                            </td>
-                                                            <td style="padding:10px 12px;">
-                                                                <span
-                                                                    style="background:<?php echo $sc['bg']; ?>; color:<?php echo $sc['color']; ?>; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; text-transform:uppercase;">
-                                                                    <?php echo htmlspecialchars($off['status']); ?>
-                                                                </span>
-                                                            </td>
-                                                            <td style="padding:10px 12px; color:var(--text-light); font-size:13px;">
-                                                                <?php echo htmlspecialchars($off['notes'] ?? '—'); ?>
-                                                            </td>
-                                                        </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
                             <?php else: ?>
-                                    <div class="empty-state">
-                                        <i class="fas fa-hand-holding-heart"></i>
-                                        <p>No offerings recorded for this member.</p>
-                                    </div>
+                                <div class="empty-state">
+                                    <i class="fas fa-hand-holding-heart"></i>
+                                    <p>No offerings recorded for this member.</p>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>

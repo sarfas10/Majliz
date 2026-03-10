@@ -671,6 +671,16 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $amount = floatval($input['amount'] ?? 0);
     $description = $input['description'] ?? null;
 
+    // Fetch custom dues categories to identify custom payments
+    $custom_dues_categories = [];
+    $custom_dues_sql = "SELECT DISTINCT category_name FROM mahal_additional_dues WHERE category_name IS NOT NULL AND TRIM(category_name) != ''";
+    $custom_dues_result = $conn->query($custom_dues_sql);
+    if ($custom_dues_result) {
+        while ($row = $custom_dues_result->fetch_assoc()) {
+            $custom_dues_categories[] = strtoupper(trim($row['category_name']));
+        }
+    }
+
     // donor info: expecting donor_member_id (head id) and donor_details (person name)
     $donor_member_id = isset($input['donor_member_id']) && $input['donor_member_id'] !== '' ? intval($input['donor_member_id']) : null;
     $donor_details = isset($input['donor_details']) ? trim($input['donor_details']) : null;
@@ -871,6 +881,29 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
+        // Business rule for CUSTOM DUES:
+        // - If payment category matches a custom due, reduce custom_due.
+        if ($type === 'INCOME' && in_array(strtoupper($category), $custom_dues_categories, true) && $donor_member_id) {
+            $targetTable = ($donor_table === 'sahakari_members') ? 'sahakari_members' : 'members';
+            $updCD_sql = "
+                UPDATE {$targetTable}
+                SET
+                    custom_due = GREATEST(0, custom_due - ?)
+                WHERE id = ?
+            ";
+            $updCD = $conn->prepare($updCD_sql);
+            if ($updCD) {
+                $updCD->bind_param("di", $d_amount, $d_donor_id);
+                if (!$updCD->execute()) {
+                    $updCD->close();
+                    throw new Exception("Failed to update custom dues: " . $updCD->error);
+                }
+                $updCD->close();
+            } else {
+                throw new Exception("Failed to prepare CUSTOM DUE update: " . $conn->error);
+            }
+        }
+
         // Also update total_donations_received for donors when applicable (exempt categories excluded)
         $exempt = ['FRIDAY INCOME', 'ROOM RENT', 'CASH DEPOSIT', 'NERCHE PETTI'];
 
@@ -996,6 +1029,16 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         ? 'sahakari_members'
         : 'members';
 
+    // Fetch custom dues categories to identify custom payments
+    $custom_dues_categories = [];
+    $custom_dues_sql = "SELECT DISTINCT category_name FROM mahal_additional_dues WHERE category_name IS NOT NULL AND TRIM(category_name) != ''";
+    $custom_dues_result = $conn->query($custom_dues_sql);
+    if ($custom_dues_result) {
+        while ($row = $custom_dues_result->fetch_assoc()) {
+            $custom_dues_categories[] = strtoupper(trim($row['category_name']));
+        }
+    }
+
     if ($user_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Missing user_id']);
         exit();
@@ -1075,6 +1118,9 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 
         $upd_total_received_sql = "UPDATE {$member_table} SET total_donations_received = total_donations_received + ? WHERE id = ?";
         $upd_total_received_stmt = $conn->prepare($upd_total_received_sql);
+
+        $upd_custom_sql = "UPDATE {$member_table} SET custom_due = GREATEST(0, custom_due - ?) WHERE id = ?";
+        $upd_custom_stmt = $conn->prepare($upd_custom_sql);
 
         $chk_member_sql = "SELECT id FROM {$member_table} WHERE id = ? AND mahal_id = ?";
         $chk_member_stmt = $conn->prepare($chk_member_sql);
@@ -1162,6 +1208,16 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                     $upd_monthly_stmt->bind_param("dddi", $d_amount, $d_amount, $d_amount, $d_donor_id);
                     if (!$upd_monthly_stmt->execute()) {
                         throw new Exception("Failed to update advance/due for {$member_table} id {$d_donor_id}: " . $upd_monthly_stmt->error);
+                    }
+                }
+            }
+
+            // CUSTOM DUES handling in bulk
+            if ($type === 'INCOME' && in_array(strtoupper($category), $custom_dues_categories, true)) {
+                if ($upd_custom_stmt) {
+                    $upd_custom_stmt->bind_param("di", $d_amount, $d_donor_id);
+                    if (!$upd_custom_stmt->execute()) {
+                        throw new Exception("Failed to update custom dues for {$member_table} id {$d_donor_id}: " . $upd_custom_stmt->error);
                     }
                 }
             }
@@ -1255,6 +1311,16 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         $del->close();
 
+        // Fetch custom dues categories to identify custom payments for reversal
+        $custom_dues_categories = [];
+        $custom_dues_sql = "SELECT DISTINCT category_name FROM mahal_additional_dues WHERE category_name IS NOT NULL AND TRIM(category_name) != ''";
+        $custom_dues_result = $conn->query($custom_dues_sql);
+        if ($custom_dues_result) {
+            while ($row = $custom_dues_result->fetch_assoc()) {
+                $custom_dues_categories[] = strtoupper(trim($row['category_name']));
+            }
+        }
+
         $exempt = ['FRIDAY INCOME', 'ROOM RENT', 'CASH DEPOSIT', 'NERCHE PETTI'];
 
         // Reverse total_donations_received in correct table
@@ -1326,6 +1392,27 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                     throw new Exception("Failed to reverse monthly fee / advance on member: " . $upd2->error);
                 }
                 $upd2->close();
+            }
+        }
+
+        // Reverse CUSTOM DUES (add the amount back to custom due)
+        if (
+            $type === 'INCOME'
+            && in_array($category, $custom_dues_categories, true)
+            && $donor_member_id
+            && $donor_table !== null
+        ) {
+            $targetTable = ($donor_table === 'sahakari_members') ? 'sahakari_members' : 'members';
+
+            $revCD_sql = "UPDATE {$targetTable} SET custom_due = custom_due + ? WHERE id = ?";
+            $revCD = $conn->prepare($revCD_sql);
+            if ($revCD) {
+                $revCD->bind_param("di", $amount, $donor_member_id);
+                if (!$revCD->execute()) {
+                    $revCD->close();
+                    throw new Exception("Failed to reverse custom dues: " . $revCD->error);
+                }
+                $revCD->close();
             }
         }
 
@@ -1786,354 +1873,354 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     header_remove('Content-Type');
     header('Content-Type: text/html; charset=utf-8');
     ?>
-    <!DOCTYPE html>
-    <html lang="en">
+        <!DOCTYPE html>
+        <html lang="en">
 
-    <head>
-        <meta charset="utf-8">
-        <title><?= $title ?> - <?= $mahal ?></title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            :root {
-                --ink: #111827;
-                --muted: #6b7280;
-                --bg: #ffffff;
-                --line: #e5e7eb;
-                --pri: #2563eb;
-            }
-
-            * {
-                box-sizing: border-box;
-            }
-
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                color: var(--ink);
-                background: #f3f4f6;
-                margin: 0;
-                padding: 24px;
-            }
-
-            .sheet {
-                max-width: 760px;
-                margin: 0 auto;
-                background: var(--bg);
-                border: 1px solid var(--line);
-                border-radius: 16px;
-                padding: 28px;
-            }
-
-            .hdr {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 16px;
-                margin-bottom: 18px;
-            }
-
-            .brand h1 {
-                font-size: 20px;
-                margin: 0 0 4px;
-                color: var(--pri);
-                font-weight: 800;
-                letter-spacing: .2px;
-            }
-
-            .brand div {
-                font-size: 12px;
-                color: var(--muted);
-                word-break: break-word;
-            }
-
-            .meta {
-                text-align: right;
-            }
-
-            .meta div {
-                font-size: 12px;
-                color: var(--muted);
-            }
-
-            .badge {
-                display: inline-block;
-                padding: 6px 10px;
-                border-radius: 999px;
-                font-weight: 700;
-                font-size: 12px;
-                background: #d1fae5;
-                color: #065f46;
-            }
-
-            .badge.expense {
-                background: #fee2e2;
-                color: #991b1b;
-            }
-
-            .grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 14px;
-                margin: 16px 0 8px;
-            }
-
-            .card {
-                border: 1px solid var(--line);
-                border-radius: 12px;
-                padding: 12px;
-            }
-
-            .card h3 {
-                margin: 0 0 8px;
-                font-size: 12px;
-                color: var(--muted);
-                letter-spacing: .3px;
-                text-transform: uppercase;
-            }
-
-            .row {
-                display: flex;
-                justify-content: space-between;
-                gap: 10px;
-                padding: 10px 0;
-                border-bottom: 1px dashed var(--line);
-            }
-
-            .row:last-child {
-                border-bottom: none;
-            }
-
-            .label {
-                color: var(--muted);
-                font-size: 12px;
-                min-width: 140px;
-            }
-
-            .val {
-                font-weight: 700;
-                word-break: break-word;
-                white-space: pre-wrap;
-            }
-
-            .val.desc {
-                font-weight: 400;
-                font-size: 12px;
-                color: #000;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-
-            .amt {
-                font-size: 20px;
-                font-weight: 800;
-            }
-
-            .actions {
-                display: flex;
-                gap: 10px;
-                margin-top: 18px;
-            }
-
-            .btn {
-                border: 1px solid var(--line);
-                background: #fff;
-                padding: 10px 14px;
-                border-radius: 10px;
-                cursor: pointer;
-                font-weight: 600;
-            }
-
-            .btn:hover {
-                background: #f9fafb;
-            }
-
-            .foot {
-                margin-top: 18px;
-                font-size: 12px;
-                color: var(--muted);
-                text-align: center;
-            }
-
-            @media print {
-                @page {
-                    size: A4 portrait;
-                    margin: 0;
+        <head>
+            <meta charset="utf-8">
+            <title><?= $title ?> - <?= $mahal ?></title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                :root {
+                    --ink: #111827;
+                    --muted: #6b7280;
+                    --bg: #ffffff;
+                    --line: #e5e7eb;
+                    --pri: #2563eb;
                 }
 
-                html,
-                body {
-                    background: #fff;
-                    padding: 0;
-                    margin: 0;
-                    width: 210mm;
-                }
-
-                body {
-                    padding: 8mm;
-                }
-
-                .sheet {
-                    max-width: 100%;
-                    width: 100%;
-                    height: 138.5mm;
-                    overflow: hidden;
-                    border: none;
-                    border-radius: 0;
-                    padding: 16px;
+                * {
                     box-sizing: border-box;
                 }
 
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    color: var(--ink);
+                    background: #f3f4f6;
+                    margin: 0;
+                    padding: 24px;
+                }
+
+                .sheet {
+                    max-width: 760px;
+                    margin: 0 auto;
+                    background: var(--bg);
+                    border: 1px solid var(--line);
+                    border-radius: 16px;
+                    padding: 28px;
+                }
+
+                .hdr {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    margin-bottom: 18px;
+                }
+
+                .brand h1 {
+                    font-size: 20px;
+                    margin: 0 0 4px;
+                    color: var(--pri);
+                    font-weight: 800;
+                    letter-spacing: .2px;
+                }
+
+                .brand div {
+                    font-size: 12px;
+                    color: var(--muted);
+                    word-break: break-word;
+                }
+
+                .meta {
+                    text-align: right;
+                }
+
+                .meta div {
+                    font-size: 12px;
+                    color: var(--muted);
+                }
+
+                .badge {
+                    display: inline-block;
+                    padding: 6px 10px;
+                    border-radius: 999px;
+                    font-weight: 700;
+                    font-size: 12px;
+                    background: #d1fae5;
+                    color: #065f46;
+                }
+
+                .badge.expense {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 14px;
+                    margin: 16px 0 8px;
+                }
+
+                .card {
+                    border: 1px solid var(--line);
+                    border-radius: 12px;
+                    padding: 12px;
+                }
+
+                .card h3 {
+                    margin: 0 0 8px;
+                    font-size: 12px;
+                    color: var(--muted);
+                    letter-spacing: .3px;
+                    text-transform: uppercase;
+                }
+
+                .row {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 10px;
+                    padding: 10px 0;
+                    border-bottom: 1px dashed var(--line);
+                }
+
+                .row:last-child {
+                    border-bottom: none;
+                }
+
+                .label {
+                    color: var(--muted);
+                    font-size: 12px;
+                    min-width: 140px;
+                }
+
+                .val {
+                    font-weight: 700;
+                    word-break: break-word;
+                    white-space: pre-wrap;
+                }
+
+                .val.desc {
+                    font-weight: 400;
+                    font-size: 12px;
+                    color: #000;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                }
+
+                .amt {
+                    font-size: 20px;
+                    font-weight: 800;
+                }
+
                 .actions {
-                    display: none !important;
+                    display: flex;
+                    gap: 10px;
+                    margin-top: 18px;
+                }
+
+                .btn {
+                    border: 1px solid var(--line);
+                    background: #fff;
+                    padding: 10px 14px;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    font-weight: 600;
+                }
+
+                .btn:hover {
+                    background: #f9fafb;
                 }
 
                 .foot {
-                    margin-top: 8px;
+                    margin-top: 18px;
+                    font-size: 12px;
+                    color: var(--muted);
+                    text-align: center;
                 }
-            }
-        </style>
-    </head>
 
-    <body>
-        <div class="sheet">
-            <div class="hdr">
-                <div class="brand">
-                    <h1><?= $mahal ?></h1>
-                    <div>
-                        <?php if ($addr)
-                            echo $addr . ' · '; ?>
-                        <?php if ($reg)
-                            echo 'Reg: ' . $reg . ' · '; ?>
-                        <?php if ($email)
-                            echo $email; ?>
-                    </div>
-                </div>
-                <div class="meta">
-                    <div><?= $title ?></div>
-                    <div>Date: <?= $dt ?></div>
-                </div>
-            </div>
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 0;
+                    }
 
-            <div class="grid">
-                <div class="card">
-                    <h3>Transaction</h3>
-                    <div class="row">
-                        <div class="label">Type</div>
-                        <div class="val">
-                            <span class="badge <?= $type === 'EXPENSE' ? 'expense' : '' ?>"><?= $type ?></span>
+                    html,
+                    body {
+                        background: #fff;
+                        padding: 0;
+                        margin: 0;
+                        width: 210mm;
+                    }
+
+                    body {
+                        padding: 8mm;
+                    }
+
+                    .sheet {
+                        max-width: 100%;
+                        width: 100%;
+                        height: 138.5mm;
+                        overflow: hidden;
+                        border: none;
+                        border-radius: 0;
+                        padding: 16px;
+                        box-sizing: border-box;
+                    }
+
+                    .actions {
+                        display: none !important;
+                    }
+
+                    .foot {
+                        margin-top: 8px;
+                    }
+                }
+            </style>
+        </head>
+
+        <body>
+            <div class="sheet">
+                <div class="hdr">
+                    <div class="brand">
+                        <h1><?= $mahal ?></h1>
+                        <div>
+                            <?php if ($addr)
+                                echo $addr . ' · '; ?>
+                            <?php if ($reg)
+                                echo 'Reg: ' . $reg . ' · '; ?>
+                            <?php if ($email)
+                                echo $email; ?>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="label">Category</div>
-                        <div class="val"><?= $cat ?></div>
+                    <div class="meta">
+                        <div><?= $title ?></div>
+                        <div>Date: <?= $dt ?></div>
                     </div>
-                    <div class="row">
-                        <div class="label">Description</div>
-                        <div class="val desc"><?= $desc ?></div>
-                    </div>
-                    <?php if ($otherDetail && $otherDetail !== '-'): ?>
+                </div>
+
+                <div class="grid">
+                    <div class="card">
+                        <h3>Transaction</h3>
                         <div class="row">
-                            <div class="label">Other Expense Detail</div>
-                            <div class="val"><?= $otherDetail ?></div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <div class="card">
-                    <h3>Amount</h3>
-                    <div class="row">
-                        <div class="label">Amount (INR)</div>
-                        <div class="val amt">₹<?= $amt ?></div>
-                    </div>
-                    <div class="row">
-                        <div class="label">Payment Mode</div>
-                        <div class="val"><?= $payMode ?></div>
-                    </div>
-                    <div class="row">
-                        <div class="label"><?= $docLabel ?> ID</div>
-                        <div class="val"><?= $receiptLabel ?></div>
-                    </div>
-                    <div class="row">
-                        <div class="label">Recorded On</div>
-                        <div class="val"><?= date('d-m-Y H:i') ?></div>
-                    </div>
-                </div>
-            </div>
-
-            <?php if (!empty($t['donor_details']) || !empty($t['donor_member_id'])): ?>
-                <div class="card">
-                    <h3>Donor</h3>
-                    <div class="row">
-                        <div class="label">Person</div>
-                        <div class="val"><?= $donorPerson ?></div>
-                    </div>
-                    <div class="row">
-                        <div class="label">Head</div>
-                        <div class="val"><?= $donorHead ?></div>
-                    </div>
-
-                    <?php if (!empty($t['donor_member_id'])): ?>
-                        <?php
-                        $labelForId = $donorMemberNo !== '' ? 'Member No' : 'Member ID';
-                        $idValue = $donorMemberNo !== '' ? htmlspecialchars($donorMemberNo) : htmlspecialchars($donorMemberId);
-                        ?>
-                        <div class="row">
-                            <div class="label"><?= $labelForId ?></div>
-                            <div class="val"><?= $idValue ?></div>
-                        </div>
-                        <?php if ($donorMemberAddr !== ''): ?>
-                            <div class="row">
-                                <div class="label">Address</div>
-                                <div class="val"><?= htmlspecialchars($donorMemberAddr) ?></div>
+                            <div class="label">Type</div>
+                            <div class="val">
+                                <span class="badge <?= $type === 'EXPENSE' ? 'expense' : '' ?>"><?= $type ?></span>
                             </div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Category</div>
+                            <div class="val"><?= $cat ?></div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Description</div>
+                            <div class="val desc"><?= $desc ?></div>
+                        </div>
+                        <?php if ($otherDetail && $otherDetail !== '-'): ?>
+                                <div class="row">
+                                    <div class="label">Other Expense Detail</div>
+                                    <div class="val"><?= $otherDetail ?></div>
+                                </div>
                         <?php endif; ?>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($staffName): ?>
-                <div class="card">
-                    <h3>Staff Recipient</h3>
-                    <div class="row">
-                        <div class="label">Staff</div>
-                        <div class="val"><?= $staffName ?></div>
+                    </div>
+                    <div class="card">
+                        <h3>Amount</h3>
+                        <div class="row">
+                            <div class="label">Amount (INR)</div>
+                            <div class="val amt">₹<?= $amt ?></div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Payment Mode</div>
+                            <div class="val"><?= $payMode ?></div>
+                        </div>
+                        <div class="row">
+                            <div class="label"><?= $docLabel ?> ID</div>
+                            <div class="val"><?= $receiptLabel ?></div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Recorded On</div>
+                            <div class="val"><?= date('d-m-Y H:i') ?></div>
+                        </div>
                     </div>
                 </div>
-            <?php endif; ?>
 
-            <div class="actions">
-                <button class="btn" onclick="window.print()">Print</button>
-                <button class="btn" id="shareBtn">Share</button>
-                <button class="btn" id="copyBtn">Copy Link</button>
+                <?php if (!empty($t['donor_details']) || !empty($t['donor_member_id'])): ?>
+                        <div class="card">
+                            <h3>Donor</h3>
+                            <div class="row">
+                                <div class="label">Person</div>
+                                <div class="val"><?= $donorPerson ?></div>
+                            </div>
+                            <div class="row">
+                                <div class="label">Head</div>
+                                <div class="val"><?= $donorHead ?></div>
+                            </div>
+
+                            <?php if (!empty($t['donor_member_id'])): ?>
+                                    <?php
+                                    $labelForId = $donorMemberNo !== '' ? 'Member No' : 'Member ID';
+                                    $idValue = $donorMemberNo !== '' ? htmlspecialchars($donorMemberNo) : htmlspecialchars($donorMemberId);
+                                    ?>
+                                    <div class="row">
+                                        <div class="label"><?= $labelForId ?></div>
+                                        <div class="val"><?= $idValue ?></div>
+                                    </div>
+                                    <?php if ($donorMemberAddr !== ''): ?>
+                                            <div class="row">
+                                                <div class="label">Address</div>
+                                                <div class="val"><?= htmlspecialchars($donorMemberAddr) ?></div>
+                                            </div>
+                                    <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
+                <?php endif; ?>
+
+                <?php if ($staffName): ?>
+                        <div class="card">
+                            <h3>Staff Recipient</h3>
+                            <div class="row">
+                                <div class="label">Staff</div>
+                                <div class="val"><?= $staffName ?></div>
+                            </div>
+                        </div>
+                <?php endif; ?>
+
+                <div class="actions">
+                    <button class="btn" onclick="window.print()">Print</button>
+                    <button class="btn" id="shareBtn">Share</button>
+                    <button class="btn" id="copyBtn">Copy Link</button>
+                </div>
+
+                <div class="foot">
+                    This is a system-generated <?= strtolower($docLabel) ?> for your records.
+                </div>
             </div>
 
-            <div class="foot">
-                This is a system-generated <?= strtolower($docLabel) ?> for your records.
-            </div>
-        </div>
-
-        <script>
-            const receiptUrl = <?= json_encode($selfUrl) ?>;
-            const docLabel = <?= json_encode($docLabel) ?>;
-            document.getElementById('shareBtn').addEventListener('click', async () => {
-                if (navigator.share) {
+            <script>
+                const receiptUrl = <?= json_encode($selfUrl) ?>;
+                const docLabel = <?= json_encode($docLabel) ?>;
+                document.getElementById('shareBtn').addEventListener('click', async () => {
+                    if (navigator.share) {
+                        try {
+                            await navigator.share({ title: document.title, text: docLabel, url: receiptUrl });
+                        } catch (e) { }
+                    } else {
+                        alert('Share not supported on this device.');
+                    }
+                });
+                document.getElementById('copyBtn').addEventListener('click', async () => {
                     try {
-                        await navigator.share({ title: document.title, text: docLabel, url: receiptUrl });
-                    } catch (e) { }
-                } else {
-                    alert('Share not supported on this device.');
-                }
-            });
-            document.getElementById('copyBtn').addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(receiptUrl);
-                    alert('Link copied to clipboard!');
-                } catch (e) { alert('Copy failed.'); }
-            });
-        </script>
-    </body>
+                        await navigator.clipboard.writeText(receiptUrl);
+                        alert('Link copied to clipboard!');
+                    } catch (e) { alert('Copy failed.'); }
+                });
+            </script>
+        </body>
 
-    </html>
-    <?php
-    exit();
+        </html>
+        <?php
+        exit();
 }
 
 /* ------------------- BULK RECEIPT (printable HTML for multiple receipts) ------------------- */ elseif ($action === 'bulk_receipt' && $_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -2210,411 +2297,411 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     header_remove('Content-Type');
     header('Content-Type: text/html; charset=utf-8');
     ?>
-    <!DOCTYPE html>
-    <html lang="en">
+        <!DOCTYPE html>
+        <html lang="en">
 
-    <head>
-        <meta charset="utf-8">
-        <title>Bulk Receipts</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            :root {
-                --ink: #111827;
-                --muted: #6b7280;
-                --bg: #ffffff;
-                --line: #e5e7eb;
-                --pri: #2563eb;
-            }
-
-            * {
-                box-sizing: border-box;
-            }
-
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                color: var(--ink);
-                background: #f3f4f6;
-                margin: 0;
-                padding: 24px;
-            }
-
-            .sheet {
-                max-width: 760px;
-                margin: 0 auto 24px;
-                background: var(--bg);
-                border: 1px solid var(--line);
-                border-radius: 16px;
-                padding: 28px;
-                page-break-after: always;
-            }
-
-            .hdr {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 16px;
-                margin-bottom: 18px;
-            }
-
-            .brand h1 {
-                font-size: 20px;
-                margin: 0 0 4px;
-                color: var(--pri);
-                font-weight: 800;
-                letter-spacing: .2px;
-            }
-
-            .brand div {
-                font-size: 12px;
-                color: var(--muted);
-                word-break: break-word;
-            }
-
-            .meta {
-                text-align: right;
-            }
-
-            .meta div {
-                font-size: 12px;
-                color: var(--muted);
-            }
-
-            .badge {
-                display: inline-block;
-                padding: 6px 10px;
-                border-radius: 999px;
-                font-weight: 700;
-                font-size: 12px;
-                background: #d1fae5;
-                color: #065f46;
-            }
-
-            .badge.expense {
-                background: #fee2e2;
-                color: #991b1b;
-            }
-
-            .grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 14px;
-                margin: 16px 0 8px;
-            }
-
-            .card {
-                border: 1px solid var(--line);
-                border-radius: 12px;
-                padding: 12px;
-            }
-
-            .card h3 {
-                margin: 0 0 8px;
-                font-size: 12px;
-                color: var(--muted);
-                letter-spacing: .3px;
-                text-transform: uppercase;
-            }
-
-            .row {
-                display: flex;
-                justify-content: space-between;
-                gap: 10px;
-                padding: 10px 0;
-                border-bottom: 1px dashed var(--line);
-            }
-
-            .row:last-child {
-                border-bottom: none;
-            }
-
-            .label {
-                color: var(--muted);
-                font-size: 12px;
-                min-width: 140px;
-            }
-
-            .val {
-                font-weight: 700;
-                word-break: break-word;
-                white-space: pre-wrap;
-            }
-
-            .val.desc {
-                font-weight: 400;
-                font-size: 12px;
-                color: #000;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-
-            .amt {
-                font-size: 20px;
-                font-weight: 800;
-            }
-
-            .foot {
-                margin-top: 18px;
-                font-size: 12px;
-                color: var(--muted);
-                text-align: center;
-            }
-
-            .top-actions {
-                max-width: 760px;
-                margin: 0 auto 16px;
-                text-align: right;
-            }
-
-            .btn {
-                border: 1px solid var(--line);
-                background: #fff;
-                padding: 8px 12px;
-                border-radius: 10px;
-                cursor: pointer;
-                font-weight: 600;
-                font-size: 13px;
-            }
-
-            .btn:hover {
-                background: #f9fafb;
-            }
-
-            @media print {
-                @page {
-                    size: A4 portrait;
-                    margin: 0;
+        <head>
+            <meta charset="utf-8">
+            <title>Bulk Receipts</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                :root {
+                    --ink: #111827;
+                    --muted: #6b7280;
+                    --bg: #ffffff;
+                    --line: #e5e7eb;
+                    --pri: #2563eb;
                 }
 
-                html,
-                body {
-                    background: #fff;
-                    padding: 0;
-                    margin: 0;
-                    width: 210mm;
+                * {
+                    box-sizing: border-box;
                 }
 
                 body {
-                    padding: 8mm;
-                }
-
-                .top-actions {
-                    display: none !important;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    color: var(--ink);
+                    background: #f3f4f6;
+                    margin: 0;
+                    padding: 24px;
                 }
 
                 .sheet {
-                    max-width: 100%;
-                    width: 100%;
-                    height: 138.5mm;
-                    overflow: hidden;
-                    border: none;
-                    border-radius: 0;
-                    padding: 16px;
-                    box-sizing: border-box;
+                    max-width: 760px;
+                    margin: 0 auto 24px;
+                    background: var(--bg);
+                    border: 1px solid var(--line);
+                    border-radius: 16px;
+                    padding: 28px;
                     page-break-after: always;
                 }
 
-                .foot {
-                    margin-top: 8px;
+                .hdr {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    margin-bottom: 18px;
                 }
-            }
-        </style>
-    </head>
 
-    <body>
+                .brand h1 {
+                    font-size: 20px;
+                    margin: 0 0 4px;
+                    color: var(--pri);
+                    font-weight: 800;
+                    letter-spacing: .2px;
+                }
 
-        <?php if (!empty($ordered)): ?>
-            <div class="top-actions">
-                <button class="btn" onclick="window.print()">Print All</button>
-            </div>
-        <?php endif; ?>
+                .brand div {
+                    font-size: 12px;
+                    color: var(--muted);
+                    word-break: break-word;
+                }
 
-        <?php
-        if (empty($ordered)) {
-            echo "<div style='max-width:760px;margin:20px auto;background:#fff;padding:18px;border-radius:12px;border:1px solid #eee;'>No receipts found.</div>";
-            exit();
-        }
+                .meta {
+                    text-align: right;
+                }
 
-        foreach ($ordered as $t) {
-            $mahal = htmlspecialchars($t['mahal_name'] ?? 'Mahal');
-            $addr = htmlspecialchars($t['mahal_address'] ?? '');
-            $reg = htmlspecialchars($t['reg_no'] ?? '');
-            $email = htmlspecialchars($t['mahal_email'] ?? '');
+                .meta div {
+                    font-size: 12px;
+                    color: var(--muted);
+                }
 
-            $dt = date('d-m-Y', strtotime($t['transaction_date']));
-            $type = htmlspecialchars($t['type']);
-            $cat = htmlspecialchars($t['category']);
-            $docLabel = ($t['type'] === 'EXPENSE') ? 'Voucher' : 'Receipt';
+                .badge {
+                    display: inline-block;
+                    padding: 6px 10px;
+                    border-radius: 999px;
+                    font-weight: 700;
+                    font-size: 12px;
+                    background: #d1fae5;
+                    color: #065f46;
+                }
 
-            $desc = htmlspecialchars($t['description'] ?? '-');
-            $otherDetail = htmlspecialchars($t['other_expense_detail'] ?? '-');
-            $amt = number_format((float) $t['amount'], 2);
-            $donorPerson = htmlspecialchars($t['donor_details'] ?? '-');
+                .badge.expense {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
 
-            // Resolve donor from members / sahakari_members
-            $donorHeadNameRaw = $t['donor_head_name'] ?? null;
-            $donorMemberNoRaw = $t['donor_member_number'] ?? null;
-            $donorMemberIdRaw = $t['donor_member_internal_id'] ?? null;
-            $donorMemberAddrRaw = $t['donor_member_address'] ?? null;
+                .grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 14px;
+                    margin: 16px 0 8px;
+                }
 
-            if (
-                !empty($t['donor_member_id']) &&
-                empty($donorHeadNameRaw) &&
-                empty($donorMemberNoRaw) &&
-                empty(trim((string) $donorMemberAddrRaw ?? '')) &&
-                $hasSahBulk
-            ) {
-                $sid = (int) $t['donor_member_id'];
-                $sstmt = $conn->prepare("SELECT id, head_name, member_number, address FROM sahakari_members WHERE id = ? LIMIT 1");
-                if ($sstmt) {
-                    $sstmt->bind_param("i", $sid);
-                    $sstmt->execute();
-                    $sr = $sstmt->get_result()->fetch_assoc();
-                    $sstmt->close();
-                    if ($sr) {
-                        $donorHeadNameRaw = $sr['head_name'] ?? null;
-                        $donorMemberNoRaw = $sr['member_number'] ?? null;
-                        $donorMemberIdRaw = $sr['id'] ?? null;
-                        $donorMemberAddrRaw = $sr['address'] ?? null;
+                .card {
+                    border: 1px solid var(--line);
+                    border-radius: 12px;
+                    padding: 12px;
+                }
+
+                .card h3 {
+                    margin: 0 0 8px;
+                    font-size: 12px;
+                    color: var(--muted);
+                    letter-spacing: .3px;
+                    text-transform: uppercase;
+                }
+
+                .row {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 10px;
+                    padding: 10px 0;
+                    border-bottom: 1px dashed var(--line);
+                }
+
+                .row:last-child {
+                    border-bottom: none;
+                }
+
+                .label {
+                    color: var(--muted);
+                    font-size: 12px;
+                    min-width: 140px;
+                }
+
+                .val {
+                    font-weight: 700;
+                    word-break: break-word;
+                    white-space: pre-wrap;
+                }
+
+                .val.desc {
+                    font-weight: 400;
+                    font-size: 12px;
+                    color: #000;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                }
+
+                .amt {
+                    font-size: 20px;
+                    font-weight: 800;
+                }
+
+                .foot {
+                    margin-top: 18px;
+                    font-size: 12px;
+                    color: var(--muted);
+                    text-align: center;
+                }
+
+                .top-actions {
+                    max-width: 760px;
+                    margin: 0 auto 16px;
+                    text-align: right;
+                }
+
+                .btn {
+                    border: 1px solid var(--line);
+                    background: #fff;
+                    padding: 8px 12px;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 13px;
+                }
+
+                .btn:hover {
+                    background: #f9fafb;
+                }
+
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 0;
+                    }
+
+                    html,
+                    body {
+                        background: #fff;
+                        padding: 0;
+                        margin: 0;
+                        width: 210mm;
+                    }
+
+                    body {
+                        padding: 8mm;
+                    }
+
+                    .top-actions {
+                        display: none !important;
+                    }
+
+                    .sheet {
+                        max-width: 100%;
+                        width: 100%;
+                        height: 138.5mm;
+                        overflow: hidden;
+                        border: none;
+                        border-radius: 0;
+                        padding: 16px;
+                        box-sizing: border-box;
+                        page-break-after: always;
+                    }
+
+                    .foot {
+                        margin-top: 8px;
                     }
                 }
-            }
+            </style>
+        </head>
 
-            $donorHeadName = $donorHeadNameRaw ?? '-';
-            $donorHead = htmlspecialchars($donorHeadName);
-            $donorMemberNo = $donorMemberNoRaw !== null ? (string) $donorMemberNoRaw : '';
-            $donorMemberId = $donorMemberIdRaw !== null ? (string) $donorMemberIdRaw : '';
-            $donorMemberAddr = trim((string) ($donorMemberAddrRaw ?? ''));
+        <body>
 
-            $payMode = htmlspecialchars($t['payment_mode'] ?? 'CASH');
-
-            $staffName = '';
-            if (!empty($t['staff_id'])) {
-                $sstmt = $conn->prepare("SELECT name FROM staff WHERE id = ?");
-                if ($sstmt) {
-                    $sstmt->bind_param("i", $t['staff_id']);
-                    $sstmt->execute();
-                    $sr = $sstmt->get_result()->fetch_assoc();
-                    if ($sr)
-                        $staffName = htmlspecialchars($sr['name']);
-                    $sstmt->close();
-                }
-            }
-
-            $fallbackPrefix = ($t['type'] === 'EXPENSE') ? 'V' : 'R';
-            $receiptId = htmlspecialchars($t['receipt_no'] ?? ($fallbackPrefix . $t['id']));
-            $title = $docLabel . " " . $receiptId;
-            ?>
-            <div class="sheet">
-                <div class="hdr">
-                    <div class="brand">
-                        <h1><?= $mahal ?></h1>
-                        <div>
-                            <?php if ($addr)
-                                echo $addr . ' · '; ?>
-                            <?php if ($reg)
-                                echo 'Reg: ' . $reg . ' · '; ?>
-                            <?php if ($email)
-                                echo $email; ?>
-                        </div>
+            <?php if (!empty($ordered)): ?>
+                    <div class="top-actions">
+                        <button class="btn" onclick="window.print()">Print All</button>
                     </div>
-                    <div class="meta">
-                        <div><?= $title ?></div>
-                        <div>Date: <?= $dt ?></div>
-                    </div>
-                </div>
+            <?php endif; ?>
 
-                <div class="grid">
-                    <div class="card">
-                        <h3>Transaction</h3>
-                        <div class="row">
-                            <div class="label">Type</div>
-                            <div class="val">
-                                <span class="badge <?= $type === 'EXPENSE' ? 'expense' : '' ?>"><?= $type ?></span>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="label">Category</div>
-                            <div class="val"><?= $cat ?></div>
-                        </div>
-                        <div class="row">
-                            <div class="label">Description</div>
-                            <div class="val desc"><?= $desc ?></div>
-                        </div>
-                        <?php if ($otherDetail && $otherDetail !== '-'): ?>
-                            <div class="row">
-                                <div class="label">Other Expense Detail</div>
-                                <div class="val"><?= $otherDetail ?></div>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="card">
-                        <h3>Amount</h3>
-                        <div class="row">
-                            <div class="label">Amount (INR)</div>
-                            <div class="val amt">₹<?= $amt ?></div>
-                        </div>
-                        <div class="row">
-                            <div class="label">Payment Mode</div>
-                            <div class="val"><?= $payMode ?></div>
-                        </div>
-                        <div class="row">
-                            <div class="label"><?= $docLabel ?> ID</div>
-                            <div class="val"><?= $receiptId ?></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Donor</h3>
-                    <div class="row">
-                        <div class="label">Person</div>
-                        <div class="val"><?= $donorPerson ?></div>
-                    </div>
-                    <div class="row">
-                        <div class="label">Head</div>
-                        <div class="val"><?= $donorHead ?></div>
-                    </div>
-
-                    <?php if (!empty($t['donor_member_id'])): ?>
-                        <?php
-                        $labelForId = $donorMemberNo !== '' ? 'Member No' : 'Member ID';
-                        $idValue = $donorMemberNo !== '' ? htmlspecialchars($donorMemberNo) : htmlspecialchars($donorMemberId);
-                        ?>
-                        <div class="row">
-                            <div class="label"><?= $labelForId ?></div>
-                            <div class="val"><?= $idValue ?></div>
-                        </div>
-                        <?php if ($donorMemberAddr !== ''): ?>
-                            <div class="row">
-                                <div class="label">Address</div>
-                                <div class="val"><?= htmlspecialchars($donorMemberAddr) ?></div>
-                            </div>
-                        <?php endif; ?>
-                    <?php endif; ?>
-                </div>
-
-                <?php if ($staffName): ?>
-                    <div class="card">
-                        <h3>Staff Recipient</h3>
-                        <div class="row">
-                            <div class="label">Staff</div>
-                            <div class="val"><?= $staffName ?></div>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-                <div class="foot">
-                    This is a system-generated <?= strtolower($docLabel) ?> for your records.
-                </div>
-            </div>
             <?php
-        }
-        ?>
-    </body>
+            if (empty($ordered)) {
+                echo "<div style='max-width:760px;margin:20px auto;background:#fff;padding:18px;border-radius:12px;border:1px solid #eee;'>No receipts found.</div>";
+                exit();
+            }
 
-    </html>
-    <?php
-    exit();
+            foreach ($ordered as $t) {
+                $mahal = htmlspecialchars($t['mahal_name'] ?? 'Mahal');
+                $addr = htmlspecialchars($t['mahal_address'] ?? '');
+                $reg = htmlspecialchars($t['reg_no'] ?? '');
+                $email = htmlspecialchars($t['mahal_email'] ?? '');
+
+                $dt = date('d-m-Y', strtotime($t['transaction_date']));
+                $type = htmlspecialchars($t['type']);
+                $cat = htmlspecialchars($t['category']);
+                $docLabel = ($t['type'] === 'EXPENSE') ? 'Voucher' : 'Receipt';
+
+                $desc = htmlspecialchars($t['description'] ?? '-');
+                $otherDetail = htmlspecialchars($t['other_expense_detail'] ?? '-');
+                $amt = number_format((float) $t['amount'], 2);
+                $donorPerson = htmlspecialchars($t['donor_details'] ?? '-');
+
+                // Resolve donor from members / sahakari_members
+                $donorHeadNameRaw = $t['donor_head_name'] ?? null;
+                $donorMemberNoRaw = $t['donor_member_number'] ?? null;
+                $donorMemberIdRaw = $t['donor_member_internal_id'] ?? null;
+                $donorMemberAddrRaw = $t['donor_member_address'] ?? null;
+
+                if (
+                    !empty($t['donor_member_id']) &&
+                    empty($donorHeadNameRaw) &&
+                    empty($donorMemberNoRaw) &&
+                    empty(trim((string) $donorMemberAddrRaw ?? '')) &&
+                    $hasSahBulk
+                ) {
+                    $sid = (int) $t['donor_member_id'];
+                    $sstmt = $conn->prepare("SELECT id, head_name, member_number, address FROM sahakari_members WHERE id = ? LIMIT 1");
+                    if ($sstmt) {
+                        $sstmt->bind_param("i", $sid);
+                        $sstmt->execute();
+                        $sr = $sstmt->get_result()->fetch_assoc();
+                        $sstmt->close();
+                        if ($sr) {
+                            $donorHeadNameRaw = $sr['head_name'] ?? null;
+                            $donorMemberNoRaw = $sr['member_number'] ?? null;
+                            $donorMemberIdRaw = $sr['id'] ?? null;
+                            $donorMemberAddrRaw = $sr['address'] ?? null;
+                        }
+                    }
+                }
+
+                $donorHeadName = $donorHeadNameRaw ?? '-';
+                $donorHead = htmlspecialchars($donorHeadName);
+                $donorMemberNo = $donorMemberNoRaw !== null ? (string) $donorMemberNoRaw : '';
+                $donorMemberId = $donorMemberIdRaw !== null ? (string) $donorMemberIdRaw : '';
+                $donorMemberAddr = trim((string) ($donorMemberAddrRaw ?? ''));
+
+                $payMode = htmlspecialchars($t['payment_mode'] ?? 'CASH');
+
+                $staffName = '';
+                if (!empty($t['staff_id'])) {
+                    $sstmt = $conn->prepare("SELECT name FROM staff WHERE id = ?");
+                    if ($sstmt) {
+                        $sstmt->bind_param("i", $t['staff_id']);
+                        $sstmt->execute();
+                        $sr = $sstmt->get_result()->fetch_assoc();
+                        if ($sr)
+                            $staffName = htmlspecialchars($sr['name']);
+                        $sstmt->close();
+                    }
+                }
+
+                $fallbackPrefix = ($t['type'] === 'EXPENSE') ? 'V' : 'R';
+                $receiptId = htmlspecialchars($t['receipt_no'] ?? ($fallbackPrefix . $t['id']));
+                $title = $docLabel . " " . $receiptId;
+                ?>
+                    <div class="sheet">
+                        <div class="hdr">
+                            <div class="brand">
+                                <h1><?= $mahal ?></h1>
+                                <div>
+                                    <?php if ($addr)
+                                        echo $addr . ' · '; ?>
+                                    <?php if ($reg)
+                                        echo 'Reg: ' . $reg . ' · '; ?>
+                                    <?php if ($email)
+                                        echo $email; ?>
+                                </div>
+                            </div>
+                            <div class="meta">
+                                <div><?= $title ?></div>
+                                <div>Date: <?= $dt ?></div>
+                            </div>
+                        </div>
+
+                        <div class="grid">
+                            <div class="card">
+                                <h3>Transaction</h3>
+                                <div class="row">
+                                    <div class="label">Type</div>
+                                    <div class="val">
+                                        <span class="badge <?= $type === 'EXPENSE' ? 'expense' : '' ?>"><?= $type ?></span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="label">Category</div>
+                                    <div class="val"><?= $cat ?></div>
+                                </div>
+                                <div class="row">
+                                    <div class="label">Description</div>
+                                    <div class="val desc"><?= $desc ?></div>
+                                </div>
+                                <?php if ($otherDetail && $otherDetail !== '-'): ?>
+                                        <div class="row">
+                                            <div class="label">Other Expense Detail</div>
+                                            <div class="val"><?= $otherDetail ?></div>
+                                        </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="card">
+                                <h3>Amount</h3>
+                                <div class="row">
+                                    <div class="label">Amount (INR)</div>
+                                    <div class="val amt">₹<?= $amt ?></div>
+                                </div>
+                                <div class="row">
+                                    <div class="label">Payment Mode</div>
+                                    <div class="val"><?= $payMode ?></div>
+                                </div>
+                                <div class="row">
+                                    <div class="label"><?= $docLabel ?> ID</div>
+                                    <div class="val"><?= $receiptId ?></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <h3>Donor</h3>
+                            <div class="row">
+                                <div class="label">Person</div>
+                                <div class="val"><?= $donorPerson ?></div>
+                            </div>
+                            <div class="row">
+                                <div class="label">Head</div>
+                                <div class="val"><?= $donorHead ?></div>
+                            </div>
+
+                            <?php if (!empty($t['donor_member_id'])): ?>
+                                    <?php
+                                    $labelForId = $donorMemberNo !== '' ? 'Member No' : 'Member ID';
+                                    $idValue = $donorMemberNo !== '' ? htmlspecialchars($donorMemberNo) : htmlspecialchars($donorMemberId);
+                                    ?>
+                                    <div class="row">
+                                        <div class="label"><?= $labelForId ?></div>
+                                        <div class="val"><?= $idValue ?></div>
+                                    </div>
+                                    <?php if ($donorMemberAddr !== ''): ?>
+                                            <div class="row">
+                                                <div class="label">Address</div>
+                                                <div class="val"><?= htmlspecialchars($donorMemberAddr) ?></div>
+                                            </div>
+                                    <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ($staffName): ?>
+                                <div class="card">
+                                    <h3>Staff Recipient</h3>
+                                    <div class="row">
+                                        <div class="label">Staff</div>
+                                        <div class="val"><?= $staffName ?></div>
+                                    </div>
+                                </div>
+                        <?php endif; ?>
+
+                        <div class="foot">
+                            This is a system-generated <?= strtolower($docLabel) ?> for your records.
+                        </div>
+                    </div>
+                    <?php
+            }
+            ?>
+        </body>
+
+        </html>
+        <?php
+        exit();
 }
 
 /* ------------------- Fallback ------------------- */ else {

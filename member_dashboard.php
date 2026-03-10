@@ -2018,7 +2018,13 @@ if ($member_success !== '') {
                                     <div class="stat-item">
                                         <div class="stat-amount">
                                             ₹<?php echo number_format((float) ($member['total_due'] ?? 0), 2); ?></div>
-                                        <div class="stat-label">Total Due</div>
+                                        <div class="stat-label">Monthly Due</div>
+                                    </div>
+                                    <div class="stat-item"
+                                        style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), #fef3c7); border-color: rgba(245, 158, 11, 0.2);">
+                                        <div class="stat-amount" style="color: var(--warning);">
+                                            ₹<?php echo number_format((float) ($member['custom_due'] ?? 0), 2); ?></div>
+                                        <div class="stat-label">Custom Due</div>
                                     </div>
                                     <div class="stat-item">
                                         <div class="stat-amount">
@@ -2446,50 +2452,50 @@ if ($member_success !== '') {
                     $upi_url = "upi://pay?pa=" . urlencode($payment_details['upi_id']) . "&pn=" . urlencode($payeeName);
                     $qr_src = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($upi_url);
                     ?>
-                        <img src="<?php echo $qr_src; ?>" alt="UPI QR Code">
-                        <div style="margin-top: 12px; font-weight: 600; color: var(--primary); font-family: monospace;">
-                            <?php echo htmlspecialchars($payment_details['upi_id']); ?>
-                        </div>
+                    <img src="<?php echo $qr_src; ?>" alt="UPI QR Code">
+                    <div style="margin-top: 12px; font-weight: 600; color: var(--primary); font-family: monospace;">
+                        <?php echo htmlspecialchars($payment_details['upi_id']); ?>
                     </div>
+                </div>
 
-                    <div class="bank-details-grid">
-                        <div class="detail-row">
-                            <span class="detail-label">Bank Name</span>
-                            <span
-                                class="detail-value"><?php echo htmlspecialchars($payment_details['bank_name'] ?? '-'); ?></span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Account Holder</span>
-                            <span
-                                class="detail-value"><?php echo htmlspecialchars($payment_details['account_holder'] ?? '-'); ?></span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Account Number</span>
-                            <span class="detail-value"
-                                style="font-family: monospace;"><?php echo htmlspecialchars($payment_details['account_number'] ?? '-'); ?></span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">IFSC Code</span>
-                            <span class="detail-value"
-                                style="font-family: monospace;"><?php echo htmlspecialchars($payment_details['ifsc_code'] ?? '-'); ?></span>
-                        </div>
+                <div class="bank-details-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">Bank Name</span>
+                        <span
+                            class="detail-value"><?php echo htmlspecialchars($payment_details['bank_name'] ?? '-'); ?></span>
                     </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Account Holder</span>
+                        <span
+                            class="detail-value"><?php echo htmlspecialchars($payment_details['account_holder'] ?? '-'); ?></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Account Number</span>
+                        <span class="detail-value"
+                            style="font-family: monospace;"><?php echo htmlspecialchars($payment_details['account_number'] ?? '-'); ?></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">IFSC Code</span>
+                        <span class="detail-value"
+                            style="font-family: monospace;"><?php echo htmlspecialchars($payment_details['ifsc_code'] ?? '-'); ?></span>
+                    </div>
+                </div>
             <?php else: ?>
-                    <div style="text-align: center; padding: 40px 0; color: var(--text-secondary);">
-                        <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
-                        <p>Payment details not available.<br>Please contact the office.</p>
-                    </div>
+                <div style="text-align: center; padding: 40px 0; color: var(--text-secondary);">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                    <p>Payment details not available.<br>Please contact the office.</p>
+                </div>
             <?php endif; ?>
 
             <?php if (!empty($payment_details) && !empty($payment_details['upi_id'])): ?>
-                    <?php
-                    $upiPayeeName = !empty($payment_details['account_holder']) ? $payment_details['account_holder'] : 'Mahal';
-                    $upiDeepLink = "upi://pay?pa=" . urlencode($payment_details['upi_id']) . "&pn=" . urlencode($upiPayeeName);
-                    ?>
-                    <a href="<?php echo htmlspecialchars($upiDeepLink); ?>" class="btn"
-                        style="width:100%;margin-top:16px;justify-content:center;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;font-size:1rem;padding:.85rem 1.2rem;border-radius:12px;gap:.6rem;box-shadow:0 4px 14px rgba(16,185,129,.35);">
-                        <i class="fas fa-mobile-alt"></i> Open UPI App
-                    </a>
+                <?php
+                $upiPayeeName = !empty($payment_details['account_holder']) ? $payment_details['account_holder'] : 'Mahal';
+                $upiDeepLink = "upi://pay?pa=" . urlencode($payment_details['upi_id']) . "&pn=" . urlencode($upiPayeeName);
+                ?>
+                <a href="<?php echo htmlspecialchars($upiDeepLink); ?>" class="btn"
+                    style="width:100%;margin-top:16px;justify-content:center;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;font-size:1rem;padding:.85rem 1.2rem;border-radius:12px;gap:.6rem;box-shadow:0 4px 14px rgba(16,185,129,.35);">
+                    <i class="fas fa-mobile-alt"></i> Open UPI App
+                </a>
             <?php endif; ?>
 
             <button class="btn btn-primary" style="width: 100%; margin-top: 12px; justify-content: center;"

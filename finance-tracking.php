@@ -46,6 +46,18 @@ $stmt->close();
 // Define logo path
 $logo_path = "logo.jpeg";
 
+// Fetch custom additional dues categories
+$custom_dues_categories = [];
+$custom_dues_sql = "SELECT DISTINCT category_name FROM mahal_additional_dues WHERE category_name IS NOT NULL AND TRIM(category_name) != ''";
+$custom_dues_result = $conn->query($custom_dues_sql);
+if ($custom_dues_result) {
+    while ($row = $custom_dues_result->fetch_assoc()) {
+        $custom_dues_categories[] = strtoupper(trim($row['category_name']));
+    }
+}
+$custom_dues_json = json_encode($custom_dues_categories);
+
+
 
 ?>
 <!DOCTYPE html>
@@ -2405,10 +2417,13 @@ $logo_path = "logo.jpeg";
             staffSalaryGroup.style.display = 'none';
 
             if (type === 'INCOME') {
-                const incomeCategories = [
+                const standardIncomeCategories = [
                     'MONTHLY FEE', 'DONATION', 'FRIDAY INCOME', 'NABIDHINAM', 'CHERIYA PERUNAL',
                     'BALI PERUNAL', 'ASSET RENT', 'SAHAKARI', 'NERCHE PETTI', 'BARATH', 'LELAM', 'FOOD INCOME', 'CASH DEPOSIT'
                 ];
+                const customIncomeCategories = <?php echo $custom_dues_json; ?>;
+                const incomeCategories = [...new Set([...standardIncomeCategories, ...customIncomeCategories])]; // Merge and remove duplicates
+
                 incomeCategories.forEach(cat => {
                     const opt = document.createElement('option');
                     opt.value = cat;
@@ -3166,7 +3181,9 @@ $logo_path = "logo.jpeg";
             const sel = document.getElementById('bulkCategory');
             sel.innerHTML = '<option value="">Select Category</option>';
             if (type === 'INCOME') {
-                const incomeCategories = ['MONTHLY FEE', 'DONATION', 'FRIDAY INCOME', 'NABIDHINAM', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'ASSET RENT', 'SAHAKARI', 'NERCHE PETTI', 'BARATH', 'LELAM', 'FOOD INCOME', 'CASH DEPOSIT'];
+                const standardIncomeCategories = ['MONTHLY FEE', 'DONATION', 'FRIDAY INCOME', 'NABIDHINAM', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'ASSET RENT', 'SAHAKARI', 'NERCHE PETTI', 'BARATH', 'LELAM', 'FOOD INCOME', 'CASH DEPOSIT'];
+                const customIncomeCategories = <?php echo $custom_dues_json; ?>;
+                const incomeCategories = [...new Set([...standardIncomeCategories, ...customIncomeCategories])];
                 incomeCategories.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
             } else if (type === 'EXPENSE') {
                 const expenseCategories = ['SALARY', 'OFFICE EXPENSE', 'PURCHASE', 'ASSET TAX', 'BUILDING EXPENSE', 'STATIONARY EXPENSE', 'ELECTRICITY BILL', 'USTHAD FOOD', 'CLEANING EXPENSE', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'NABIDHINAM', 'BANK DEPOSITE', 'OTHER EXPENSES'];

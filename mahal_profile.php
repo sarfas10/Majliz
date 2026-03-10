@@ -90,6 +90,7 @@ try {
             id INT AUTO_INCREMENT PRIMARY KEY,
             mahal_id INT NOT NULL,
             title VARCHAR(150) NOT NULL,
+            category_name VARCHAR(150) DEFAULT NULL,
             amount DECIMAL(10,2) NOT NULL,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -98,10 +99,27 @@ try {
         if ($conn->query($createDuesSql) === FALSE) {
             error_log("Error creating mahal_additional_dues table: " . $conn->error);
         }
+    } else {
+        // Also ensure we run alter table to add the column for existing DBs
+        $conn->query("ALTER TABLE mahal_additional_dues ADD COLUMN IF NOT EXISTS category_name VARCHAR(150) DEFAULT NULL");
     }
 
     /* --- detect/create member_additional_dues table (per-member tracking) --- */
     $memDuesTableCheck = $conn->query("SHOW TABLES LIKE 'member_additional_dues'");
+    
+    // Add custom_due to existing members tables
+    $checkMembers = $conn->query("SHOW TABLES LIKE 'members'");
+    if ($checkMembers && $checkMembers->num_rows > 0) {
+        $conn->query("ALTER TABLE members ADD COLUMN IF NOT EXISTS custom_due DECIMAL(12,2) NOT NULL DEFAULT 0.00");
+        $checkMembers->close();
+    }
+    
+    $checkSahakari = $conn->query("SHOW TABLES LIKE 'sahakari_members'");
+    if ($checkSahakari && $checkSahakari->num_rows > 0) {
+        $conn->query("ALTER TABLE sahakari_members ADD COLUMN IF NOT EXISTS custom_due DECIMAL(12,2) NOT NULL DEFAULT 0.00");
+        $checkSahakari->close();
+    }
+
     if (!$memDuesTableCheck || $memDuesTableCheck->num_rows == 0) {
         $createMemDuesSql = "CREATE TABLE member_additional_dues (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -360,11 +378,11 @@ try {
                         $due_row = $verifyResult->fetch_assoc();
                         $due_amount = (float) $due_row['amount'];
 
-                        // Reverse total_due for regular members who haven't paid this due
+                        // Reverse custom_due for regular members who haven't paid this due
                         $revRegStmt = $conn->prepare(
                             "UPDATE members m
                              JOIN member_additional_dues mad ON mad.member_id = m.id
-                             SET m.total_due = GREATEST(0, m.total_due - mad.amount)
+                             SET m.custom_due = GREATEST(0, m.custom_due - mad.amount)
                              WHERE mad.due_id = ? AND mad.member_type = 'regular' AND mad.paid = 0"
                         );
                         if ($revRegStmt) {
@@ -395,20 +413,23 @@ try {
         /* --- handle add additional due --- */
         if (isset($_POST['add_additional_due'])) {
             $due_title = trim($_POST['due_title'] ?? '');
+            $due_category = trim($_POST['due_category'] ?? '');
             $due_amount_raw = $_POST['due_amount'] ?? '';
             $due_description = trim($_POST['due_description'] ?? '');
 
             if (empty($due_title)) {
                 $update_message = "Due title is required.";
+            } elseif (empty($due_category)) {
+                $update_message = "Due category name is required.";
             } elseif (!is_numeric($due_amount_raw) || floatval($due_amount_raw) <= 0) {
                 $update_message = "Please enter a valid due amount greater than zero.";
             } else {
                 $due_amount = number_format((float) $due_amount_raw, 2, '.', '');
 
-                // 1. Insert the master due record
-                $insStmt = $conn->prepare("INSERT INTO mahal_additional_dues (mahal_id, title, amount, description) VALUES (?, ?, ?, ?)");
+                // 1. Insert the master due record with category
+                $insStmt = $conn->prepare("INSERT INTO mahal_additional_dues (mahal_id, title, category_name, amount, description) VALUES (?, ?, ?, ?, ?)");
                 if ($insStmt) {
-                    $insStmt->bind_param("isds", $user_id, $due_title, $due_amount, $due_description);
+                    $insStmt->bind_param("issss", $user_id, $due_title, $due_category, $due_amount, $due_description);
                     if ($insStmt->execute()) {
                         $new_due_id = $insStmt->insert_id;
                         $regulars_count = 0;
@@ -419,7 +440,7 @@ try {
                         $regRes = $conn->query("SELECT id FROM members WHERE mahal_id = $user_id{$memStatusWhere}");
                         if ($regRes) {
                             $insMemStmt = $conn->prepare("INSERT INTO member_additional_dues (due_id, member_id, member_type, amount) VALUES (?, ?, 'regular', ?)");
-                            $updMemStmt = $conn->prepare("UPDATE members SET total_due = total_due + ? WHERE id = ?");
+                            $updMemStmt = $conn->prepare("UPDATE members SET custom_due = custom_due + ? WHERE id = ?");
                             while ($mrow = $regRes->fetch_assoc()) {
                                 $mid = (int) $mrow['id'];
                                 $insMemStmt->bind_param("iid", $new_due_id, $mid, $due_amount);
@@ -511,7 +532,7 @@ try {
 
     // Fetch Additional Dues History
     $additional_dues = [];
-    $duesSql = "SELECT id, title, amount, description, created_at FROM mahal_additional_dues WHERE mahal_id = ? ORDER BY created_at DESC";
+    $duesSql = "SELECT id, title, category_name, amount, description, created_at FROM mahal_additional_dues WHERE mahal_id = ? ORDER BY created_at DESC";
     if ($stmtDues = $conn->prepare($duesSql)) {
         $stmtDues->bind_param("i", $user_id);
         $stmtDues->execute();
@@ -3610,7 +3631,7 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                             </h4>
                             <form method="POST" action="">
                                 <div class="form-row"
-                                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                                    style="display: grid; grid-template-columns: 1fr 1fr1fr; gap: 16px; margin-bottom: 16px;">
                                     <div class="form-group" style="margin: 0;">
                                         <label
                                             style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-light);"><i
@@ -3618,6 +3639,15 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                                 style="color:var(--error);">*</span></label>
                                         <input type="text" name="due_title" class="form-input"
                                             placeholder="e.g. Eid Celebration Fund" required
+                                            style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white;">
+                                    </div>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label
+                                            style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-light);"><i
+                                                class="fas fa-list"></i> Category <span
+                                                style="color:var(--error);">*</span></label>
+                                        <input type="text" name="due_category" class="form-input"
+                                            placeholder="e.g. Festival Fund" required
                                             style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white;">
                                     </div>
                                     <div class="form-group" style="margin: 0;">
@@ -3665,6 +3695,8 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                                     class="fas fa-calendar-alt"></i> Date</th>
                                             <th style="padding: 12px 16px; text-align: left; font-weight: 600;"><i
                                                     class="fas fa-tag"></i> Title</th>
+                                            <th style="padding: 12px 16px; text-align: left; font-weight: 600;"><i
+                                                    class="fas fa-list"></i> Category</th>
                                             <th style="padding: 12px 16px; text-align: right; font-weight: 600;"><i
                                                     class="fas fa-rupee-sign"></i> Amount</th>
                                             <th style="padding: 12px 16px; text-align: left; font-weight: 600;">
@@ -3690,6 +3722,9 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                                 <td style="padding: 12px 16px; font-weight: 600; color: var(--text);">
                                                     <?php echo htmlspecialchars($due['title']); ?>
                                                 </td>
+                                                <td style="padding: 12px 16px; font-weight: 500; color: var(--primary);">
+                                                    <?php echo !empty($due['category_name']) ? htmlspecialchars($due['category_name']) : '<span style="font-style:italic; color:var(--text-light)">Uncategorized</span>'; ?>
+                                                </td>
                                                 <td
                                                     style="padding: 12px 16px; text-align: right; font-weight: 700; color: var(--primary); white-space: nowrap;">
                                                     ₹<?php echo number_format((float) $due['amount'], 2); ?></td>
@@ -3714,7 +3749,7 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                     </tbody>
                                     <tfoot>
                                         <tr style="background: var(--card-alt); font-weight: 700;">
-                                            <td colspan="4" style="padding: 12px 16px; text-align: right; color: var(--text);">
+                                            <td colspan="5" style="padding: 12px 16px; text-align: right; color: var(--text);">
                                                 Total:</td>
                                             <td
                                                 style="padding: 12px 16px; text-align: right; color: var(--primary); font-size: 15px;">
