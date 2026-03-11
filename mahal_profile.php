@@ -413,7 +413,12 @@ try {
         /* --- handle add additional due --- */
         if (isset($_POST['add_additional_due'])) {
             $due_title = trim($_POST['due_title'] ?? '');
-            $due_category = trim($_POST['due_category'] ?? '');
+            
+            // Handle new category logic
+            $due_category_select = trim($_POST['due_category_select'] ?? '');
+            $due_category_new = trim($_POST['due_category_new'] ?? '');
+            $due_category = ($due_category_select === 'new') ? $due_category_new : $due_category_select;
+
             $due_amount_raw = $_POST['due_amount'] ?? '';
             $due_description = trim($_POST['due_description'] ?? '');
 
@@ -3623,6 +3628,16 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                         </div>
 
                         <!-- Add Due Form (hidden by default) -->
+                        <?php 
+                            $unique_categories = []; 
+                            if (!empty($additional_dues)) {
+                                foreach ($additional_dues as $due) {
+                                    if (!empty($due['category_name']) && $due['category_name'] !== 'Monthly Fee' && !in_array($due['category_name'], $unique_categories)) {
+                                        $unique_categories[] = $due['category_name'];
+                                    }
+                                }
+                            }
+                        ?>
                         <div id="addDueFormWrapper"
                             style="display: none; background: var(--card-alt); border-radius: var(--radius-sm); padding: 20px; margin-bottom: 24px; border: 1px solid var(--border);">
                             <h4
@@ -3646,9 +3661,30 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                             style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-light);"><i
                                                 class="fas fa-list"></i> Category <span
                                                 style="color:var(--error);">*</span></label>
-                                        <input type="text" name="due_category" class="form-input"
-                                            placeholder="e.g. Festival Fund" required
+                                        <select name="due_category_select" id="due_category_select" class="form-input" onchange="toggleNewCategoryField()" required
                                             style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white;">
+                                            <option value="">Select a Category</option>
+                                            <?php foreach ($unique_categories as $cat): ?>
+                                                <option value="<?php echo htmlspecialchars($cat); ?>"><?php echo htmlspecialchars($cat); ?></option>
+                                            <?php endforeach; ?>
+                                            <option value="new" style="font-weight: bold; color: var(--primary);">+ Create New Category</option>
+                                        </select>
+                                        <input type="text" name="due_category_new" id="due_category_new" class="form-input"
+                                            placeholder="Enter new category name"
+                                            style="display: none; width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white; margin-top: 8px;">
+                                        <script>
+                                            function toggleNewCategoryField() {
+                                                const select = document.getElementById('due_category_select');
+                                                const newCategoryInput = document.getElementById('due_category_new');
+                                                if (select.value === 'new') {
+                                                    newCategoryInput.style.display = 'block';
+                                                    newCategoryInput.required = true;
+                                                } else {
+                                                    newCategoryInput.style.display = 'none';
+                                                    newCategoryInput.required = false;
+                                                }
+                                            }
+                                        </script>
                                     </div>
                                     <div class="form-group" style="margin: 0;">
                                         <label
