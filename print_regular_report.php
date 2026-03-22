@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // print_regular_report.php - SIMPLIFIED VERSION (no advanced distribution)
 require_once __DIR__ . '/session_bootstrap.php';
 

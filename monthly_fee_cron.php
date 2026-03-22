@@ -44,15 +44,21 @@ $conn->set_charset('utf8mb4');
 
 
 // ----------------- LAST DAY OF MONTH CHECK (Hostinger-compatible) -----------------
-$BACKFILL_MODE = false; // TEMPORARY — set to false after December backfill
+// ----------------- LAST DAY + FIRST MINUTE CHECK -----------------
+$BACKFILL_MODE = false; // TEMPORARY — set to false after backfill
 
 if (!$BACKFILL_MODE) {
+
     $now = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
     $lastDay = (clone $now)->modify('last day of this month');
 
-    if ($now->format('Y-m-d') !== $lastDay->format('Y-m-d')) {
-        cron_respond(true, 'Skipped — not last day (IST-safe)');
+    $isLastDay = $now->format('Y-m-d') === $lastDay->format('Y-m-d');
+    $isFirstMinute = $now->format('H:i') === '00:01';
+
+    if (!$isLastDay || !$isFirstMinute) {
+        cron_respond(true, 'Skipped — not scheduled execution time');
     }
+
 }
 /**
  * Safely add a column; ignores "Duplicate column name" (1060).
@@ -134,6 +140,7 @@ CREATE TABLE IF NOT EXISTS sahakari_members_monthly_fee_log (
 
 // We keep run_month as the 1st day of this month to represent the billed month.
 // Script itself only actually runs on the last calendar day (guard above).
+
 $runMonth = (new DateTime('first day of this month'))->format('Y-m-d');
 
 

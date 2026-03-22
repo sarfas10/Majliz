@@ -205,83 +205,51 @@ $page_title = $profile ? htmlspecialchars($profile['mahal_name']) . ' — Mahal 
             align-items: center;
             gap: 12px;
             font-weight: 700;
-            font-size: 22px;
+            font-size: 20px;
             text-decoration: none;
             color: var(--text);
             font-family: 'Playfair Display', serif;
-            letter-spacing: 0.5px;
-            transition: opacity 0.3s ease;
-        }
-
-        .nav-brand:hover {
-            opacity: 0.9;
         }
 
         .nav-brand img {
-            height: 48px;
+            height: 40px;
             width: auto;
             object-fit: contain;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
         .theme-btn {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text);
-            width: 44px;
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 18px;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-
-        [data-theme="light"] .theme-btn {
-            background: rgba(0, 0, 0, 0.03);
-            border-color: rgba(0, 0, 0, 0.08);
-            color: var(--text);
+            font-size: 16px;
+            transition: all 0.2s;
         }
 
         .theme-btn:hover {
-            transform: translateY(-2px) scale(1.05);
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.25);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
-        }
-
-        [data-theme="light"] .theme-btn:hover {
-            background: rgba(0, 0, 0, 0.06);
-            border-color: rgba(0, 0, 0, 0.12);
+            background: var(--accent);
+            border-color: var(--accent);
         }
 
         .login-btn {
-            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            background: var(--accent);
             color: white;
-            padding: 10px 24px;
+            padding: 8px 20px;
             border-radius: 100px;
             text-decoration: none;
             font-size: 14px;
             font-weight: 600;
-            letter-spacing: 0.5px;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: none;
-            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.25);
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
         }
 
         .login-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
-            filter: brightness(1.05);
-        }
+            background: var(--accent2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
         }
 
         /* ── HERO ────────────────────────────────────────────────────────── */

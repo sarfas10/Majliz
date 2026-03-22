@@ -630,14 +630,21 @@ if ($action === 'get_taxable_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 /* ------------------- GET rental assets (with category) ------------------- */
+/* ------------------- GET rental assets (with category) ------------------- */
 if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $user_id = intval($_GET['user_id'] ?? 0);
 
-    // Fetch active rental assets with category name
-    $sql = "SELECT a.id, a.asset_code, a.name, ac.category_name 
+    // Fetch active rental assets with category name - GROUPED by name and category
+    $sql = "SELECT 
+                MIN(a.id) as id,
+                a.asset_code,
+                a.name, 
+                ac.category_name,
+                COUNT(*) as asset_count
             FROM assets a
             JOIN asset_categories ac ON a.category_id = ac.id
             WHERE a.mahal_id = ? AND a.status = 'active' AND a.rental_status = 'rental'
+            GROUP BY a.name, ac.category_name
             ORDER BY a.name ASC";
 
     $stmt = $conn->prepare($sql);
@@ -647,6 +654,12 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $res = $stmt->get_result();
         $assets = [];
         while ($row = $res->fetch_assoc()) {
+            // Add display_name with count if there are multiple
+            if ($row['asset_count'] > 1) {
+                $row['display_name'] = $row['name'] . ' (' . $row['asset_count'] . ' units)';
+            } else {
+                $row['display_name'] = $row['name'];
+            }
             $assets[] = $row;
         }
         $stmt->close();
@@ -656,7 +669,6 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     exit();
 }
-
 /* ------------------- SAVE transaction ------------------- */ elseif ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_input();
     if (isset($input['error'])) {
@@ -668,6 +680,21 @@ if ($action === 'get_rental_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $date = $input['date'] ?? '';
     $type = strtoupper(trim($input['type'] ?? ''));
     $category = strtoupper(trim($input['category'] ?? ''));
+    if ($category === 'ASSET RENT' && !empty($asset_id)) {
+    // Fetch asset name from database
+    $asset_name_query = "SELECT name FROM assets WHERE id = ? AND mahal_id = ?";
+    $asset_stmt = $conn->prepare($asset_name_query);
+    if ($asset_stmt) {
+        $asset_stmt->bind_param("ii", $asset_id, $user_id);
+        $asset_stmt->execute();
+        $asset_result = $asset_stmt->get_result();
+        if ($asset_row = $asset_result->fetch_assoc()) {
+            // Store category as "ASSET RENT-" + asset name
+            $category = 'ASSET RENT-' . strtoupper(trim($asset_row['name']));
+        }
+        $asset_stmt->close();
+    }
+}
     $amount = floatval($input['amount'] ?? 0);
     $description = $input['description'] ?? null;
 

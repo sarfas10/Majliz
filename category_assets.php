@@ -164,116 +164,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->close();
                 }
                 break;
-                
-            case 'add_asset':
-                // Add new asset
-                try {
-                    // Generate asset code
-                    $stmt = $conn->prepare("SELECT COUNT(*) FROM assets WHERE mahal_id = ? AND category_id = ?");
-                    $stmt->bind_param("ii", $mahal_id, $category_id);
-                    $stmt->execute();
-                    $stmt->bind_result($existing_asset_count);
-                    $stmt->fetch();
-                    $stmt->close();
-                    
-                    $next_asset_number = $existing_asset_count + 1;
-                    $asset_code = "AST" . str_pad($mahal_id, 3, '0', STR_PAD_LEFT) . 
-                                 "CAT" . str_pad($category_id, 3, '0', STR_PAD_LEFT) . 
-                                 str_pad($next_asset_number, 4, '0', STR_PAD_LEFT);
-                    
-                    // Get category depreciation rate
-                    $depreciation_rate = 10.00;
-                    $stmt = $conn->prepare("SELECT depreciation_rate FROM asset_categories WHERE id = ?");
-                    $stmt->bind_param("i", $category_id);
-                    $stmt->execute();
-                    $stmt->bind_result($fetched_depreciation_rate);
-                    if ($stmt->fetch()) {
-                        $depreciation_rate = $fetched_depreciation_rate;
-                    }
-                    $stmt->close();
-                    
-                    // Calculate current value based on depreciation
-                    $purchase_cost = floatval($_POST['purchase_cost']);
-                    $acquisition_date = new DateTime($_POST['acquisition_date']);
-                    $current_date = new DateTime();
-                    
-                    // Calculate months difference
-                    $months_diff = ($current_date->format('Y') - $acquisition_date->format('Y')) * 12;
-                    $months_diff += $current_date->format('n') - $acquisition_date->format('n');
-                    
-                    // Ensure months_diff is not negative (future acquisition date)
-                    $months_diff = max($months_diff, 0);
-                    
-                    $monthly_depreciation = ($purchase_cost * $depreciation_rate) / (100 * 12);
-                    $current_value = max($purchase_cost - ($monthly_depreciation * $months_diff), 0);
-                    
-                    // Insert asset
-                    $stmt = $conn->prepare("
-                        INSERT INTO assets (
-                            mahal_id, asset_code, name, category_id, description, 
-                            location, acquisition_date, vendor_donor, purchase_cost, 
-                            current_value, condition_status, maintenance_frequency, 
-                            assigned_to, notes, created_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    
-                    $assigned_to = !empty($_POST['assigned_to']) ? intval($_POST['assigned_to']) : NULL;
-                    $maintenance_frequency = !empty($_POST['maintenance_frequency']) ? $_POST['maintenance_frequency'] : NULL;
-                    $description = $_POST['description'] ?? '';
-                    $location = $_POST['location'] ?? '';
-                    $vendor_donor = $_POST['vendor_donor'] ?? '';
-                    $notes = $_POST['notes'] ?? '';
-                    
-                    $stmt->bind_param(
-                        "ississsddsssisi",
-                        $mahal_id,
-                        $asset_code,
-                        $_POST['asset_name'],
-                        $category_id,
-                        $description,
-                        $location,
-                        $_POST['acquisition_date'],
-                        $vendor_donor,
-                        $purchase_cost,
-                        $current_value,
-                        $_POST['condition_status'],
-                        $maintenance_frequency,
-                        $assigned_to,
-                        $notes,
-                        $user_id
-                    );
-                    
-                    if ($stmt->execute()) {
-                        $asset_id = $conn->insert_id;
-                        $stmt->close();
-                        
-                        // Log depreciation entry
-                        $stmt = $conn->prepare("
-                            INSERT INTO asset_depreciation (
-                                mahal_id, asset_id, depreciation_date, 
-                                previous_value, new_value, depreciation_amount, 
-                                depreciation_rate, calculated_by
-                            ) VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?)
-                        ");
-                        
-                        $depreciation_amount = $purchase_cost - $current_value;
-                        $stmt->bind_param("iiddddi", 
-                            $mahal_id, $asset_id, $purchase_cost, 
-                            $current_value, $depreciation_amount, 
-                            $depreciation_rate, $user_id
-                        );
-                        $stmt->execute();
-                        $stmt->close();
-                        
-                        $success_message = "Asset added successfully! Asset Code: $asset_code";
-                    } else {
-                        $error_message = "Failed to add asset: " . $conn->error;
-                    }
-                    
-                } catch(Exception $e) {
-                    $error_message = "Error adding asset: " . $e->getMessage();
-                }
-                break;
         }
     }
 }
@@ -293,18 +183,25 @@ if ($category_id > 0) {
     }
 }
 
-// Get assets for this category
+// Get assets for this category - GROUPED BY NAME with quantity
 $category_assets = [];
 if ($category_id > 0) {
     $stmt = $conn->prepare("
         SELECT 
-            a.*, 
-            s.name as staff_name,
-            ac.category_name
+            a.name,
+            a.category_id,
+            ac.category_name,
+            COUNT(*) as quantity,
+            MIN(a.asset_code) as sample_asset_code,
+            MIN(a.location) as sample_location,
+            MIN(a.acquisition_date) as acquisition_date,
+            MIN(a.condition_status) as condition_status,
+            MIN(a.status) as status,
+            MIN(a.description) as sample_description
         FROM assets a 
-        LEFT JOIN staff s ON a.assigned_to = s.id 
         LEFT JOIN asset_categories ac ON a.category_id = ac.id
         WHERE a.category_id = ? AND a.mahal_id = ? 
+        GROUP BY a.name, a.category_id
         ORDER BY a.name
     ");
     $stmt->bind_param("ii", $category_id, $mahal_id);
@@ -318,17 +215,6 @@ if ($category_id > 0) {
 
 // Get total assets count
 $total_assets = count($category_assets);
-
-// Get staff list for dropdown
-$staff_list = [];
-$stmt = $conn->prepare("SELECT id, name, staff_id FROM staff WHERE mahal_id = ? AND salary_status = 'active' ORDER BY name");
-$stmt->bind_param("i", $mahal_id);
-$stmt->execute();
-$result = $stmt->get_result();
-while ($row = $result->fetch_assoc()) {
-    $staff_list[] = $row;
-}
-$stmt->close();
 ?>
 
 <!DOCTYPE html>
@@ -1179,26 +1065,6 @@ $stmt->close();
             color: var(--text-light);
         }
 
-        /* Clickable table rows */
-        .clickable-row {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .clickable-row:hover {
-            background: #f0f7ff !important;
-            box-shadow: inset 0 0 0 1px var(--primary-light);
-            transform: translateY(-1px);
-        }
-
-        .clickable-row td:first-child {
-            border-left: 3px solid transparent;
-        }
-
-        .clickable-row:hover td:first-child {
-            border-left-color: var(--primary);
-        }
-
         /* Responsive */
         @media (min-width: 1024px) {
             .sidebar {
@@ -1217,23 +1083,6 @@ $stmt->close();
             .sidebar-close {
                 display: none;
             }
-        }
-
-        .asset-row {
-            cursor: pointer;
-            position: relative;
-        }
-
-        .asset-row:hover {
-            background: #f0f7ff !important;
-        }
-
-        .asset-row td:first-child {
-            border-left: 3px solid transparent;
-        }
-
-        .asset-row:hover td:first-child {
-            border-left-color: var(--primary);
         }
 
         .action-buttons {
@@ -1479,9 +1328,6 @@ $stmt->close();
                         <a href="asset_management.php" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Back to Assets
                         </a>
-                        <button class="btn btn-primary" onclick="openAddAssetModal()" style="margin-left: 10px;">
-                            <i class="fas fa-plus"></i> Add Asset
-                        </button>
                     </div>
                 </div>
 
@@ -1552,7 +1398,6 @@ $stmt->close();
                             <h3><i class="fas fa-list"></i> Assets in <?php echo htmlspecialchars($category_name); ?></h3>
                         </div>
                         <div class="card-header-actions">
-                         
                             <div class="assets-count">
                                 <?php echo $total_assets; ?> Asset<?php echo $total_assets != 1 ? 's' : ''; ?>
                             </div>
@@ -1579,14 +1424,13 @@ $stmt->close();
                                 <table id="assetsTable">
                                     <thead>
                                         <tr>
-                                            <th>Code</th>
-                                            <th>Name</th>
-                                            <th>Description</th>
-                                            <th>Location</th>
-                                            <th>Purchase Date</th>
+                                            <th>Asset Name</th>
+                                            <th style="text-align: center;">Quantity</th>
+                                            <th>Sample Code</th>
+                                            <th>Sample Location</th>
+                                            <th>Acquisition Date</th>
                                             <th>Condition</th>
                                             <th>Status</th>
-                                          
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1611,54 +1455,37 @@ $stmt->close();
                                                 case 'lost': $status_badge = 'badge-danger'; break;
                                             }
                                             ?>
-                                            <tr class="asset-row clickable-row" 
-                                                data-asset-id="<?php echo $asset['id']; ?>"
-                                                data-asset-name="<?php echo htmlspecialchars($asset['name']); ?>"
-                                                data-asset-code="<?php echo htmlspecialchars($asset['asset_code']); ?>"
-                                                data-asset-description="<?php echo htmlspecialchars($asset['description'] ?? ''); ?>"
-                                                data-asset-location="<?php echo htmlspecialchars($asset['location'] ?? ''); ?>"
-                                                data-asset-acquisition="<?php echo $asset['acquisition_date']; ?>"
-                                                data-asset-condition="<?php echo $asset['condition_status']; ?>"
-                                                data-asset-status="<?php echo $asset['status']; ?>"
-                                                onclick="navigateToAsset(event, <?php echo $asset['id']; ?>)">
-                                                <td>
-                                                    <span class="asset-code"><?php echo htmlspecialchars($asset['asset_code']); ?></span>
+                                            <tr>
+                                                <td style="font-weight: 600; color: var(--primary);">
+                                                    <i class="fas fa-box" style="margin-right: 8px;"></i>
+                                                    <?php echo htmlspecialchars($asset['name']); ?>
                                                 </td>
-                                                <td style="font-weight: 500;">
-                                                    <span style="color: var(--primary); font-weight: 600;">
-                                                        <?php echo htmlspecialchars($asset['name']); ?>
-                                                        <i class="fas fa-external-link-alt" style="margin-left: 5px; font-size: 12px; opacity: 0.7;"></i>
+                                                <td style="text-align: center;">
+                                                    <span style="background: var(--primary); color: white; padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 14px;">
+                                                        <?php echo $asset['quantity']; ?>
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <?php if (!empty($asset['description'])): ?>
-                                                        <span class="asset-description" style="font-size: 13px; color: var(--text-light);">
-                                                            <?php echo htmlspecialchars(substr($asset['description'], 0, 50)); ?>
-                                                            <?php if (strlen($asset['description']) > 50): ?>...<?php endif; ?>
-                                                        </span>
-                                                    <?php else: ?>
-                                                        <span style="color: var(--text-light); font-size: 13px;">-</span>
-                                                    <?php endif; ?>
+                                                    <code><?php echo htmlspecialchars($asset['sample_asset_code']); ?></code>
                                                 </td>
-                                                <td class="asset-location">
-                                                    <?php if (!empty($asset['location'])): ?>
-                                                        <span style="font-size: 13px;"><?php echo htmlspecialchars($asset['location']); ?></span>
+                                                <td>
+                                                    <?php if (!empty($asset['sample_location'])): ?>
+                                                        <?php echo htmlspecialchars($asset['sample_location']); ?>
                                                     <?php else: ?>
-                                                        <span style="color: var(--text-light); font-size: 13px;">Not specified</span>
+                                                        <span style="color: var(--text-light);">-</span>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td><?php echo date('M j, Y', strtotime($asset['acquisition_date'])); ?></td>
                                                 <td>
-                                                    <span class="badge <?php echo $condition_badge; ?> asset-condition">
+                                                    <span class="badge <?php echo $condition_badge; ?>">
                                                         <?php echo ucfirst(str_replace('_', ' ', $asset['condition_status'])); ?>
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <span class="badge <?php echo $status_badge; ?> asset-status">
+                                                    <span class="badge <?php echo $status_badge; ?>">
                                                         <?php echo ucfirst($asset['status']); ?>
                                                     </span>
                                                 </td>
-
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
@@ -1675,9 +1502,7 @@ $stmt->close();
                             <div class="empty-state">
                                 <i class="fas fa-box-open"></i>
                                 <p>No assets found in this category</p>
-                                <button class="btn btn-primary" onclick="openAddAssetModal()" style="margin-top: 15px;">
-                                    <i class="fas fa-plus"></i> Add Your First Asset
-                                </button>
+                                <p style="font-size: 14px; margin-top: 5px;">Please add assets from the asset management page</p>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -1813,111 +1638,6 @@ $stmt->close();
         </div>
     </div>
 
-    <!-- Add Asset Modal -->
-    <div id="addAssetModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-plus-circle"></i> Add New Asset</h3>
-                <button class="modal-close" onclick="closeAddAssetModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form method="POST" id="addAssetForm">
-                    <input type="hidden" name="action" value="add_asset">
-                    
-                    <div class="form-group">
-                        <label for="asset_name">Asset Name *</label>
-                        <input type="text" id="asset_name" name="asset_name" class="form-control" required placeholder="e.g., Projector, Chair, Table">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Category</label>
-                        <input type="text" class="form-control" value="<?php echo htmlspecialchars($category_name); ?>" disabled>
-                        <input type="hidden" name="category_id" value="<?php echo $category_id; ?>">
-                        <small style="color: var(--text-light); font-size: 12px;">Asset will be added to <?php echo htmlspecialchars($category_name); ?> category</small>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="acquisition_date">Acquisition/Purchase Date *</label>
-                            <input type="date" id="acquisition_date" name="acquisition_date" class="form-control" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="vendor_donor">Vendor/Donor</label>
-                            <input type="text" id="vendor_donor" name="vendor_donor" class="form-control" placeholder="Optional">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="purchase_cost">Purchase Cost (₹) *</label>
-                            <input type="number" id="purchase_cost" name="purchase_cost" class="form-control" step="0.01" required min="0" placeholder="0.00">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="condition_status">Current Condition *</label>
-                            <select id="condition_status" name="condition_status" class="form-control" required>
-                                <option value="">Select Condition</option>
-                                <option value="excellent">Excellent</option>
-                                <option value="good">Good</option>
-                                <option value="fair">Fair</option>
-                                <option value="needs_repair">Needs Repair</option>
-                                <option value="out_of_service">Out of Service</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="location">Location</label>
-                        <input type="text" id="location" name="location" class="form-control" placeholder="e.g., Ground Floor, Room 101">
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="assigned_to">Assigned Staff (Optional)</label>
-                            <select id="assigned_to" name="assigned_to" class="form-control">
-                                <option value="">Select Staff (Optional)</option>
-                                <?php foreach ($staff_list as $staff_member): ?>
-                                    <option value="<?php echo $staff_member['id']; ?>"><?php echo htmlspecialchars($staff_member['name'] . ' (' . $staff_member['staff_id'] . ')'); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="maintenance_frequency">Maintenance Frequency</label>
-                            <select id="maintenance_frequency" name="maintenance_frequency" class="form-control">
-                                <option value="">Select Schedule (Optional)</option>
-                                <option value="weekly">Weekly</option>
-                                <option value="monthly">Monthly</option>
-                                <option value="quarterly">Quarterly</option>
-                                <option value="semi_annual">Semi-Annual</option>
-                                <option value="annual">Annual</option>
-                                <option value="as_needed">As Needed</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="description">Description</label>
-                        <textarea id="description" name="description" class="form-control" rows="3" placeholder="Additional details about the asset"></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="notes">Internal Notes</label>
-                        <textarea id="notes" name="notes" class="form-control" rows="2" placeholder="Internal notes for administrators"></textarea>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeAddAssetModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Add Asset
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <script>
         // Sidebar functionality
         const sidebar = document.getElementById('sidebar');
@@ -1943,11 +1663,16 @@ $stmt->close();
             setTimeout(() => { overlay.hidden = true; }, 200);
         }
 
-        toggle.addEventListener('click', () => {
-            sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-        });
+        if (toggle) {
+            toggle.addEventListener('click', () => {
+                sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+            });
+        }
 
-        closeBtn.addEventListener('click', closeSidebar);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeSidebar);
+        }
+        
         overlay.addEventListener('click', closeSidebar);
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
@@ -1991,35 +1716,6 @@ $stmt->close();
             document.body.style.overflow = '';
         }
 
-        // Add Asset Modal Functions
-        function openAddAssetModal() {
-            const modal = document.getElementById('addAssetModal');
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden';
-            
-            // Set default date to today
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('acquisition_date').value = today;
-        }
-
-        function closeAddAssetModal() {
-            const modal = document.getElementById('addAssetModal');
-            modal.classList.remove('active');
-            document.body.style.overflow = '';
-            // Reset form
-            document.getElementById('addAssetForm').reset();
-        }
-
-        function navigateToAsset(event, assetId) {
-            // Check if the click was on an action button or its parent
-            if (event.target.closest('.action-buttons')) {
-                return;
-            }
-            
-            // Navigate to asset details page
-            window.location.href = 'asset_details.php?id=' + assetId;
-        }
-
         // Delete asset with confirmation
         function deleteAsset(assetId, assetName) {
             if (confirm('Are you sure you want to delete "' + assetName + '"? This action cannot be undone!')) {
@@ -2048,11 +1744,9 @@ $stmt->close();
         document.addEventListener('click', function(event) {
             const categoryModal = document.getElementById('categoryModal');
             const assetModal = document.getElementById('assetModal');
-            const addAssetModal = document.getElementById('addAssetModal');
             
             if (event.target === categoryModal) closeCategoryModal();
             if (event.target === assetModal) closeAssetModal();
-            if (event.target === addAssetModal) closeAddAssetModal();
         });
 
         // Close modals with Escape key
@@ -2060,7 +1754,6 @@ $stmt->close();
             if (event.key === 'Escape') {
                 closeCategoryModal();
                 closeAssetModal();
-                closeAddAssetModal();
             }
         });
 
@@ -2069,27 +1762,20 @@ $stmt->close();
             const input = document.getElementById('searchInput');
             const filter = input.value.toLowerCase();
             const table = document.getElementById('assetsTable');
-            const rows = table.getElementsByClassName('asset-row');
+            
+            if (!table) return;
+            
+            const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
             const noResults = document.getElementById('noResults');
             let foundCount = 0;
             
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
-                const cells = row.getElementsByTagName('td');
-                let found = false;
+                const assetName = row.cells[0].textContent.toLowerCase();
+                const assetCode = row.cells[2].textContent.toLowerCase();
+                const location = row.cells[3].textContent.toLowerCase();
                 
-                for (let j = 0; j < cells.length - 1; j++) {
-                    const cell = cells[j];
-                    if (cell) {
-                        const text = cell.textContent || cell.innerText;
-                        if (text.toLowerCase().includes(filter)) {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if (found) {
+                if (assetName.includes(filter) || assetCode.includes(filter) || location.includes(filter)) {
                     row.style.display = '';
                     foundCount++;
                 } else {
@@ -2130,7 +1816,6 @@ $stmt->close();
             // Focus on first input when modal opens
             const categoryModal = document.getElementById('categoryModal');
             const assetModal = document.getElementById('assetModal');
-            const addAssetModal = document.getElementById('addAssetModal');
             
             categoryModal.addEventListener('transitionend', function() {
                 if (categoryModal.classList.contains('active')) {
@@ -2141,12 +1826,6 @@ $stmt->close();
             assetModal.addEventListener('transitionend', function() {
                 if (assetModal.classList.contains('active')) {
                     document.getElementById('edit_asset_name').focus();
-                }
-            });
-            
-            addAssetModal.addEventListener('transitionend', function() {
-                if (addAssetModal.classList.contains('active')) {
-                    document.getElementById('asset_name').focus();
                 }
             });
             

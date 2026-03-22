@@ -57,8 +57,6 @@ if ($custom_dues_result) {
 }
 $custom_dues_json = json_encode($custom_dues_categories);
 
-
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -646,9 +644,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
             border-bottom: 1px solid var(--border);
             font-size: 14px;
             vertical-align: top;
-            /* Change from white-space: normal to nowrap for type column */
             white-space: nowrap;
-            /* Changed from 'normal' */
             overflow-wrap: anywhere;
             word-break: break-word;
             word-wrap: break-word;
@@ -750,9 +746,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             white-space: nowrap;
-            /* Add this */
             line-height: 1.2;
-            /* Adjust line height */
         }
 
         .action-btn:hover {
@@ -904,7 +898,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
 
         .stat-amount {
             font-size: 24px;
-            /* Reduced from 28px */
             font-weight: 800;
             white-space: nowrap;
             overflow: hidden;
@@ -912,13 +905,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
             max-width: 100%;
             letter-spacing: -0.5px;
             font-family: 'Courier New', monospace;
-            /* Fixed-width font for better alignment */
         }
 
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(5, minmax(220px, 1fr));
-            /* Increased min width */
             gap: 16px;
             margin-bottom: 20px;
         }
@@ -941,12 +932,9 @@ $custom_dues_json = json_encode($custom_dues_categories);
             background: var(--card);
         }
 
-        /* Add these styles to fix the stat card layout */
-        /* Add these styles to fix the stat card layout */
         .stat-info {
             flex: 1;
             min-width: 0;
-            /* This prevents flex items from overflowing */
             overflow: hidden;
         }
 
@@ -958,18 +946,15 @@ $custom_dues_json = json_encode($custom_dues_categories);
             text-overflow: ellipsis;
             max-width: 100%;
             letter-spacing: -0.5px;
-            /* Slightly tighter letter spacing for large numbers */
         }
 
         .stat-icon {
             font-size: 34px;
             opacity: 0.9;
             flex-shrink: 0;
-            /* Prevent the icon from shrinking */
             margin-left: 12px;
         }
 
-        /* Adjust the stats grid for better responsiveness */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(5, minmax(180px, 1fr));
@@ -988,10 +973,8 @@ $custom_dues_json = json_encode($custom_dues_categories);
             min-height: 96px;
             border: 1px solid var(--border);
             overflow: hidden;
-            /* Prevent any content from overflowing the card */
         }
 
-        /* Media query adjustments for smaller screens */
         @media (max-width: 1023.98px) {
             .stats-grid {
                 grid-template-columns: repeat(3, minmax(160px, 1fr));
@@ -1006,7 +989,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             }
         }
 
-        /* Update mobile view */
         @media (max-width: 768px) {
             table {
                 border: 0;
@@ -1036,7 +1018,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 padding: 8px 0;
                 border-bottom: 0;
                 white-space: normal !important;
-                /* Override for mobile */
             }
 
             .stat-card {
@@ -1048,7 +1029,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 font-size: 20px;
             }
 
-            /* Add to your existing CSS */
             .truncated-desc {
                 cursor: pointer;
                 color: var(--primary);
@@ -1061,7 +1041,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 text-decoration: underline;
             }
 
-            /* Ensure description cell can expand when needed */
             td:nth-child(5) {
                 white-space: normal;
                 min-width: 200px;
@@ -1072,7 +1051,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 transition: max-height 0.3s ease;
             }
 
-            /* When expanded, allow more height */
             td:nth-child(5) .expanded {
                 max-height: none;
                 overflow: visible;
@@ -1099,10 +1077,8 @@ $custom_dues_json = json_encode($custom_dues_categories);
             max-width: 100%;
             letter-spacing: -0.5px;
             font-family: 'Inter', sans-serif;
-            /* Clean font for Cr/L/K display */
         }
 
-        /* Make stat cards a bit wider */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(5, minmax(200px, 1fr));
@@ -1110,20 +1086,16 @@ $custom_dues_json = json_encode($custom_dues_categories);
             margin-bottom: 20px;
         }
 
-        /* Tooltip for full amount on hover */
         .stat-amount[title] {
             cursor: help;
             position: relative;
         }
 
-        /* Add full amount as tooltip */
         function addTooltips() {
             document.querySelectorAll('.stat-amount').forEach(el=> {
-                    // Store the full formatted amount as title attribute
                     const text=el.textContent;
 
                     if (text.includes('Cr') || text.includes('L') || text.includes('K')) {
-                        // Get the original number by parsing the text
                         let amount=0;
 
                         if (text.includes('Cr')) {
@@ -1138,7 +1110,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                             amount=parseFloat(text.replace('₹', '').replace('K', '')) * 1000;
                         }
 
-                        // Format full amount with commas
                         const fullAmount='₹' + amount.toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2
@@ -1148,7 +1119,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             });
         }
 
-        // Call this after updating stats
         setTimeout(addTooltips, 100);
 
         @media (max-width: 480px) {
@@ -2248,8 +2218,31 @@ $custom_dues_json = json_encode($custom_dues_categories);
         function saveTransaction() {
             const type = document.getElementById('entryType').value;
             const categoryRaw = document.getElementById('entryCategory').value || '';
-            const category = categoryRaw.toUpperCase();
+            let category = categoryRaw.toUpperCase();
             const year = document.getElementById('entryYear').value;
+
+            // Get asset_id for Asset Rent
+            let asset_id = null;
+            const assetIdInput = document.getElementById('entryAssetId');
+            if (assetIdInput && assetIdInput.value) {
+                asset_id = parseInt(assetIdInput.value);
+            }
+
+            // For ASSET RENT, get the asset name from the selected option and append to category
+            if (category === 'ASSET RENT' && asset_id) {
+                const assetSelect = document.getElementById('linkedBookingSelect');
+                const selectedOption = assetSelect.options[assetSelect.selectedIndex];
+                if (selectedOption && selectedOption.text) {
+                    // Extract asset name from the option text (format: "Asset Name (AST001)")
+                    const optionText = selectedOption.text;
+                    const assetNameMatch = optionText.match(/^([^(]+)/);
+                    if (assetNameMatch && assetNameMatch[1]) {
+                        const assetName = assetNameMatch[1].trim();
+                        category = `ASSET RENT-${assetName.toUpperCase()}`;
+                        console.log('Modified category to:', category); // Debug log
+                    }
+                }
+            }
 
             let finalCategory = category;
             if (year && needsYear(category)) finalCategory = `${category} ${year}`;
@@ -2294,14 +2287,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
 
             const payment_mode = document.getElementById('entryPaymentMode').value || 'CASH';
 
-            // Get asset_id (for Asset Tax)
-            let asset_id = null;
-            const assetIdInput = document.getElementById('entryAssetId');
-            if (assetIdInput && assetIdInput.value) {
-                asset_id = parseInt(assetIdInput.value);
-            }
-
-            // Get asset_booking_id (for Asset Rent)
+            // Get asset_booking_id (for Asset Rent - but we're not using it)
             let asset_booking_id = null;
             const bookingIdInput = document.getElementById('entryAssetBookingId');
             if (bookingIdInput && bookingIdInput.value) {
@@ -2334,6 +2320,8 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 asset_booking_id: asset_booking_id
             };
 
+            console.log('Saving transaction with category:', finalCategory); // Debug log
+
             const saveBtn = document.querySelector('#transactionForm button[type="submit"]');
             const originalText = saveBtn.textContent;
             saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
@@ -2357,6 +2345,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     if (result.success) {
                         loadTransactions();
                         resetEntryForm();
+                        closeModal();
 
                         try {
                             const docLabel = type === 'EXPENSE' ? 'voucher' : 'receipt';
@@ -2597,9 +2586,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const sel = document.getElementById('linkedBookingSelect');
             const filterVal = document.getElementById('rentalAssetCategoryFilter').value;
 
-            // Keep the "Manual Entry" or "Select" as first option?
-            // If user wanted "Manual Entry", let's keep it index 0. 
-            // However, usually we want users to link to an asset. 
             sel.innerHTML = '<option value="">-- Select Rental Asset --</option>';
 
             const filtered = filterVal
@@ -2621,10 +2607,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const hiddenBookingId = document.getElementById('entryAssetBookingId');
             const descInput = document.getElementById('entryDescription');
 
-            // Asset Rent DOES NOT link to bookings anymore, but directly to Asset ID
-            // So we use entryAssetId.
-            // entryAssetBookingId should be CLEARED.
-
             if (!assetId) {
                 hiddenAssetId.value = '';
                 hiddenBookingId.value = '';
@@ -2632,16 +2614,15 @@ $custom_dues_json = json_encode($custom_dues_categories);
             }
 
             hiddenAssetId.value = assetId;
-            hiddenBookingId.value = ''; // No booking ID for ad-hoc rent
+            hiddenBookingId.value = '';
 
             const asset = allRentalAssets.find(a => a.id == assetId);
             if (asset) {
-                // Description update
                 descInput.value = `Asset Rent: ${asset.name}`;
-                // We do NOT auto-fill amount as rent is variable/negotiated per transaction usually, 
-                // unless we had a 'default_rent' in DB which we don't.
+                console.log('Selected asset:', asset.name, 'with ID:', assetId);
             }
         }
+
         // --- Asset Tax Linking Logic ---
         function fetchTaxableAssets() {
             const sel = document.getElementById('linkedAssetTaxSelect');
@@ -2676,7 +2657,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
 
             if (!assetId) {
                 hiddenId.value = '';
-                return; // User selected Manual Entry
+                return;
             }
 
             hiddenId.value = assetId;
@@ -2799,10 +2780,12 @@ $custom_dues_json = json_encode($custom_dues_categories);
         }
 
         function loadTransactions() {
-            document.getElementById('transactionsTableBody').innerHTML =
+            document.getElementById('transactionsTableBody').innerHTML = 
                 '<tr><td colspan="9" class="no-data">Loading transactions...</td></tr>';
 
-            fetch('finance-api.php?action=get&user_id=' + encodeURIComponent(userId) + '&t=' + new Date().getTime())
+            const timestamp = new Date().getTime();
+
+            fetch('finance-api.php?action=get&user_id=' + encodeURIComponent(userId) + '&t=' + timestamp)
                 .then(response => {
                     if (!response.ok) throw new Error('Network response was not ok');
                     return response.json();
@@ -2811,43 +2794,47 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     if (data.success) {
                         try {
                             allTransactions = Array.isArray(data.transactions) ? data.transactions : [];
+
+                            const purchaseTransactions = allTransactions.filter(t => 
+                                t.category === 'PURCHASE' && t.type === 'EXPENSE'
+                            );
+                            console.log('Purchase transactions found:', purchaseTransactions.length);
+                            console.log('All transactions count:', allTransactions.length);
+
                             filteredTransactions = [...allTransactions];
                             document.getElementById('count').textContent = allTransactions.length;
 
                             populateCategoryFilter(allTransactions);
 
-                            // Apply default date filter (Start from the very first transaction)
                             if (allTransactions.length > 0) {
-                                // API returns sorted by date DESC, so the last item is the oldest
-                                const oldest = allTransactions[allTransactions.length - 1];
-                                document.getElementById('filterDateFrom').value = oldest.date;
+                                const dates = allTransactions.map(t => new Date(t.date));
+                                const earliestDate = new Date(Math.min.apply(null, dates));
+                                const latestDate = new Date(Math.max.apply(null, dates));
+
+                                document.getElementById('filterDateFrom').value = earliestDate.toISOString().slice(0, 10);
+                                document.getElementById('filterDateTo').value = latestDate.toISOString().slice(0, 10);
                             } else {
-                                // Fallback to start of current month if no transactions
-                                const startOfMonth = new Date();
-                                startOfMonth.setDate(1);
-                                document.getElementById('filterDateFrom').value = startOfMonth.toISOString().slice(0, 10);
+                                const sixMonthsAgo = new Date();
+                                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                                document.getElementById('filterDateFrom').value = sixMonthsAgo.toISOString().slice(0, 10);
+                                document.getElementById('filterDateTo').value = new Date().toISOString().slice(0, 10);
                             }
 
-                            const today = new Date();
-                            const year = today.getFullYear();
-                            const month = String(today.getMonth() + 1).padStart(2, '0');
-                            const day = String(today.getDate()).padStart(2, '0');
-                            document.getElementById('filterDateTo').value = `${year}-${month}-${day}`;
+                            applyFilters();
 
-                            filterDashboard();
                         } catch (e) {
                             console.error('Render error:', e);
-                            document.getElementById('transactionsTableBody').innerHTML =
+                            document.getElementById('transactionsTableBody').innerHTML = 
                                 '<tr><td colspan="9" class="no-data">Display Error: ' + e.message + '</td></tr>';
                         }
                     } else {
-                        document.getElementById('transactionsTableBody').innerHTML =
+                        document.getElementById('transactionsTableBody').innerHTML = 
                             '<tr><td colspan="9" class="no-data">Error loading transactions: ' + (data.message || 'Unknown error') + '</td></tr>';
                     }
                 })
                 .catch(err => {
                     console.error('Load transactions error:', err);
-                    document.getElementById('transactionsTableBody').innerHTML =
+                    document.getElementById('transactionsTableBody').innerHTML = 
                         '<tr><td colspan="9" class="no-data">Error loading transactions: ' + err.message + '</td></tr>';
                 });
         }
@@ -2883,20 +2870,18 @@ $custom_dues_json = json_encode($custom_dues_categories);
         }
 
         function formatAmountWithSuffix(amount) {
-            // Convert to number if it's a string
             amount = parseFloat(amount) || 0;
 
-            if (amount >= 10000000) { // 1 crore = 1,00,00,000
+            if (amount >= 10000000) {
                 const crores = amount / 10000000;
                 return '₹' + crores.toFixed(crores >= 10 ? 0 : 1) + 'Cr';
-            } else if (amount >= 100000) { // 1 lakh = 1,00,000
+            } else if (amount >= 100000) {
                 const lakhs = amount / 100000;
                 return '₹' + lakhs.toFixed(lakhs >= 10 ? 0 : 1) + 'L';
-            } else if (amount >= 1000) { // 1 thousand = 1,000
+            } else if (amount >= 1000) {
                 const thousands = amount / 1000;
                 return '₹' + thousands.toFixed(thousands >= 10 ? 0 : 1) + 'K';
             } else {
-                // For amounts less than 1000, show with 2 decimal places
                 return '₹' + amount.toLocaleString('en-IN', {
                     minimumFractionDigits: amount % 1 !== 0 ? 2 : 0,
                     maximumFractionDigits: 2
@@ -2909,7 +2894,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
             const balance = income - expense;
 
-            // Use the new formatting function
             document.getElementById('totalIncome').textContent = formatAmountWithSuffix(income);
             document.getElementById('totalExpense').textContent = formatAmountWithSuffix(expense);
             document.getElementById('currentBalance').textContent = formatAmountWithSuffix(balance);
@@ -2927,7 +2911,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 }
             });
 
-            // Use the new formatting function
             document.getElementById('cashBalance').textContent = formatAmountWithSuffix(cashBalance);
             document.getElementById('gpayBalance').textContent = formatAmountWithSuffix(gpayBalance);
         }
@@ -2971,6 +2954,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 }
             }
         }
+
         function displayTransactions(transactions, showActions = false) {
             const tbody = document.getElementById('transactionsTableBody');
 
@@ -2981,7 +2965,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             }
 
             const rows = transactions.map(t => {
-                // Create compact type badge
                 const typeBadge = t.type === 'INCOME'
                     ? `<span class="badge badge-income" title="Income">INC</span>`
                     : `<span class="badge badge-expense" title="Expense">EXP</span>`;
@@ -2994,8 +2977,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     rawDesc = t.description || '-';
                 }
 
-                // Truncate description for table view (keep full for receipt)
-                const maxDescLength = 50; // Adjust as needed
+                const maxDescLength = 50;
                 let displayDesc = '-';
                 let fullDesc = rawDesc;
 
@@ -3003,12 +2985,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     const escapedDesc = escapeHtmlBasic(rawDesc);
                     if (escapedDesc.length > maxDescLength) {
                         displayDesc = escapedDesc.substring(0, maxDescLength) + '...';
-                        // Store full description in data attribute for tooltip
                         displayDesc = `<span class="truncated-desc" title="${escapedDesc}" data-full-desc="${escapedDesc.replace(/"/g, '&quot;')}">${displayDesc}</span>`;
                     } else {
                         displayDesc = escapedDesc;
                     }
-                    fullDesc = escapedDesc; // Store full escaped version
+                    fullDesc = escapedDesc;
                 }
 
                 let linkedBadge = '';
@@ -3026,11 +3007,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 const amtFormatted = `₹${amt.toLocaleString('en-IN')}`;
                 const receiptNo = t.receipt_no || '-';
 
+                // Use the category directly from the database - it will already have the asset name appended
+                let category = t.category || '';
+                
                 // Truncate category if too long
-                const category = t.category || '';
-                const displayCategory = category.length > 20
-                    ? category.substring(0, 17) + '...'
-                    : category;
+                const displayCategory = category.length > 30 ? category.substring(0, 27) + '...' : category;
 
                 let donorColumn = '-';
                 if (t.donor_member_id && t.donor_details) {
@@ -3074,14 +3055,12 @@ $custom_dues_json = json_encode($custom_dues_categories);
 
             tbody.innerHTML = rows.join('');
 
-            // Add click handler to expand truncated descriptions
             tbody.addEventListener('click', function (e) {
                 const descElement = e.target.closest('.truncated-desc');
                 if (descElement) {
                     e.preventDefault();
                     e.stopPropagation();
 
-                    // Toggle between truncated and full view
                     if (descElement.classList.contains('expanded')) {
                         descElement.classList.remove('expanded');
                         const fullDesc = descElement.getAttribute('data-full-desc');
@@ -3095,6 +3074,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 }
             });
         }
+
         function applyFilters() {
             const typeFilter = document.getElementById('typeFilter').value;
             const categoryFilter = document.getElementById('categoryFilter').value;
@@ -3102,11 +3082,15 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const filterFrom = document.getElementById('filterDateFrom').value;
             const filterTo = document.getElementById('filterDateTo').value;
 
+            console.log('Applying filters:', {typeFilter, categoryFilter, paymentModeFilter, filterFrom, filterTo});
+            console.log('Total transactions before filter:', allTransactions.length);
+
             filteredTransactions = allTransactions.filter(t => {
                 const tDate = new Date(t.date);
 
                 if (filterFrom) {
                     const fromDate = new Date(filterFrom);
+                    fromDate.setHours(0, 0, 0, 0);
                     if (tDate < fromDate) return false;
                 }
                 if (filterTo) {
@@ -3115,19 +3099,36 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     if (tDate > toDate) return false;
                 }
 
-                if (typeFilter !== 'all' && t.type !== typeFilter) return false;
+                if (typeFilter !== 'all') {
+                    if (t.type.toUpperCase() !== typeFilter.toUpperCase()) return false;
+                }
 
-                if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+                if (categoryFilter !== 'all') {
+                    const tCategory = (t.category || '').toUpperCase();
+                    const filterCategory = categoryFilter.toUpperCase();
+                    if (tCategory !== filterCategory) return false;
+                }
 
-                if (paymentModeFilter !== 'all' && t.payment_mode !== paymentModeFilter) return false;
+                if (paymentModeFilter !== 'all') {
+                    if ((t.payment_mode || '').toUpperCase() !== paymentModeFilter.toUpperCase()) return false;
+                }
 
                 return true;
             });
 
-            // Update stats based on filtered transactions
+            console.log('Filtered transactions count:', filteredTransactions.length);
+
+            const categories = [...new Set(filteredTransactions.map(t => t.category))];
+            console.log('Categories in filtered results:', categories);
+
+            const purchaseCount = filteredTransactions.filter(t => 
+                (t.category || '').toUpperCase() === 'PURCHASE' && 
+                (t.type || '').toUpperCase() === 'EXPENSE'
+            ).length;
+            console.log('Purchase transactions in filtered view:', purchaseCount);
+
             updateStats(filteredTransactions);
 
-            // Update balance stats based on filtered date range
             if (filterFrom && filterTo) {
                 fetch(`finance-api.php?action=get_balance_by_mode&user_id=${encodeURIComponent(userId)}&from=${encodeURIComponent(filterFrom)}&to=${encodeURIComponent(filterTo)}`)
                     .then(r => r.json())
@@ -3140,14 +3141,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
             }
 
             if (currentView === 'recent') {
-                // If user wants to see all, they should switch to 'All Transactions' tab or we increase this limit
-                // checking if specific user requirement is to show ALL even in recent?
-                // The user said "14 transactions... only 10 visible".
-                // I will increase the 'recent' limit to 20 or just show all if filters are applied.
-
-                // Better approach: If filters are active (dates changed from default, or category selected), show ALL match.
-                // But typically 'recent' means limited.
-                // Let's change the default "Recent" behavior to show 50 items to cover the 14.
                 displayTransactions(filteredTransactions.slice(0, 50), true);
             } else {
                 displayTransactions(filteredTransactions, true);
@@ -3230,12 +3223,10 @@ $custom_dues_json = json_encode($custom_dues_categories);
             if (!type) return alert('Please select transaction type.');
             if (!category) return alert('Please select a category.');
 
-            // Validate Other Expenses
             if (type === 'EXPENSE' && needsDetail(category) && !otherExpenseDetail) {
                 return alert('Please provide details for ' + category);
             }
 
-            // Get selected members
             const checkedBoxes = Array.from(document.querySelectorAll('.bulk-member-checkbox')).filter(cb => cb.checked);
             if (checkedBoxes.length === 0) {
                 return alert('Please select at least one member for bulk transaction.');
@@ -3364,7 +3355,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                             ? parseFloat(m.default_amount).toFixed(2)
                             : '';
 
-                        // Use correct field names based on expected API response
                         const name = m.name || m.head_name || m.full_name || `Member #${m.id}`;
                         const memberNumber = m.member_number || m.member_code || '';
 
@@ -3386,7 +3376,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                         </div>`;
                     }).join('');
 
-                    // Add event listeners for checkboxes
                     document.querySelectorAll('.bulk-member-checkbox').forEach(cb => {
                         cb.addEventListener('change', function () {
                             const amtInput = document.querySelector(`.bulk-member-amount[data-id="${this.getAttribute('data-id')}"]`);
@@ -3404,7 +3393,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                         });
                     });
 
-                    // Initialize disabled state based on checkbox
                     document.querySelectorAll('.bulk-member-checkbox').forEach(cb => {
                         const amtInput = document.querySelector(`.bulk-member-amount[data-id="${cb.getAttribute('data-id')}"]`);
                         if (amtInput && !cb.checked) {
@@ -3422,29 +3410,26 @@ $custom_dues_json = json_encode($custom_dues_categories);
         }
 
         function formatCompactAmount(amount) {
-            if (amount >= 10000000) { // 1 crore
+            if (amount >= 10000000) {
                 return '₹' + (amount / 10000000).toFixed(1) + 'Cr';
-            } else if (amount >= 100000) { // 1 lakh
+            } else if (amount >= 100000) {
                 return '₹' + (amount / 100000).toFixed(1) + 'L';
-            } else if (amount >= 1000) { // 1 thousand
+            } else if (amount >= 1000) {
                 return '₹' + (amount / 1000).toFixed(1) + 'K';
             }
             return '₹' + amount.toLocaleString('en-IN');
         }
 
-        // Update the updateStats function to use compact formatting for large numbers
         function updateStats(transactions) {
             const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
             const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
             const balance = income - expense;
 
-            // Use compact formatting for very large numbers
             document.getElementById('totalIncome').textContent = formatCompactAmount(income);
             document.getElementById('totalExpense').textContent = formatCompactAmount(expense);
             document.getElementById('currentBalance').textContent = formatCompactAmount(balance);
         }
 
-        // Also update the updateBalanceStats function
         function updateBalanceStats(balances) {
             let cashBalance = 0;
             let gpayBalance = 0;
@@ -3460,12 +3445,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
             document.getElementById('cashBalance').textContent = formatCompactAmount(cashBalance);
             document.getElementById('gpayBalance').textContent = formatCompactAmount(gpayBalance);
         }
+
         function addTooltips() {
             document.querySelectorAll('.stat-amount').forEach(el => {
-                // Store the full formatted amount as title attribute
                 const text = el.textContent;
                 if (text.includes('Cr') || text.includes('L') || text.includes('K')) {
-                    // Get the original number by parsing the text
                     let amount = 0;
                     if (text.includes('Cr')) {
                         amount = parseFloat(text.replace('₹', '').replace('Cr', '')) * 10000000;
@@ -3475,7 +3459,6 @@ $custom_dues_json = json_encode($custom_dues_categories);
                         amount = parseFloat(text.replace('₹', '').replace('K', '')) * 1000;
                     }
 
-                    // Format full amount with commas
                     const fullAmount = '₹' + amount.toLocaleString('en-IN', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2
@@ -3486,18 +3469,15 @@ $custom_dues_json = json_encode($custom_dues_categories);
             });
         }
 
-        // Call this after updating stats
         function updateStats(transactions) {
             const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
             const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
             const balance = income - expense;
 
-            // Use the new formatting function
             document.getElementById('totalIncome').textContent = formatAmountWithSuffix(income);
             document.getElementById('totalExpense').textContent = formatAmountWithSuffix(expense);
             document.getElementById('currentBalance').textContent = formatAmountWithSuffix(balance);
 
-            // Add tooltips
             setTimeout(addTooltips, 100);
         }
 
@@ -3505,21 +3485,17 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const select = document.getElementById('categoryFilter');
             if (!select) return;
 
-            // Clear existing options (keeping "All Categories")
             while (select.options.length > 1) {
                 select.remove(1);
             }
 
-            // Get unique categories from transactions
             const categoriesSet = new Set();
             (transactions || []).forEach(t => {
                 if (t.category) categoriesSet.add(t.category);
             });
 
-            // Sort categories alphabetically
             const categories = Array.from(categoriesSet).sort((a, b) => a.localeCompare(b));
 
-            // Add category options
             categories.forEach(cat => {
                 const opt = document.createElement('option');
                 opt.value = cat;

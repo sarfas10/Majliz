@@ -236,131 +236,191 @@ function handleAssetFormSubmit($conn, $user_id, $mahal_id, $post_data)
 {
   try {
     switch ($post_data['action']) {
-      case 'add_asset':
-        // Get quantity, default to 1
-        $quantity = isset($post_data['quantity']) ? max(1, intval($post_data['quantity'])) : 1;
-        $asset_type = $post_data['asset_type'] ?? 'existing';
-        $success_count = 0;
-        $last_error = '';
-        $result = $conn->query("SELECT COUNT(*) as cnt FROM assets WHERE mahal_id = $mahal_id");
-        $row = $result->fetch_assoc();
-        $existing_asset_count = $row['cnt'];
-        if ($asset_type === 'new_purchase') {
-          $acquisition_date = $post_data['acquisition_date'];
-          $vendor_donor = $post_data['vendor_donor'] ?? '';
-          $purchase_cost = floatval($post_data['purchase_cost']);
-          $current_value = $purchase_cost; // Set current value equal to purchase cost
-          $taxable_amount = floatval($post_data['taxable_amount'] ?? 0.00);
-        } else {
-          // For existing assets
-          $acquisition_date = date('Y-m-d'); // Use todays date
-          $vendor_donor = '';
-          $purchase_cost = 0.00;
-          $current_value = 0.00;
-          $taxable_amount = floatval($post_data['taxable_amount'] ?? 0.00);
-        }
-        $rental_status = $post_data['rental_status'] ?? 'non_rental';
-        $description = $post_data['description'] ?? '';
-        $asset_name = $post_data['asset_name'];
+     // Replace the case 'add_asset' section in your handleAssetFormSubmit function with this fixed version:
 
-        // Set default values for removed fields
-        $location = '';
-        $assigned_to = NULL;
-        $maintenance_frequency = NULL;
-        $notes = '';
-        $condition_status = 'good'; // Default condition
+case 'add_asset':
+    // Get quantity, default to 1
+    $quantity = isset($post_data['quantity']) ? max(1, intval($post_data['quantity'])) : 1;
+    $asset_type = $post_data['asset_type'] ?? 'existing';
+    $success_count = 0;
+    $last_error = '';
+    
+    // FIX: Get the current MAX asset number instead of COUNT
+    // This ensures we get the actual highest number used, not just count of records
+    $result = $conn->query("SELECT MAX(CAST(SUBSTRING(asset_code, 8) AS UNSIGNED)) as max_num 
+                            FROM assets WHERE mahal_id = $mahal_id 
+                            AND asset_code LIKE 'AST" . str_pad($mahal_id, 3, '0', STR_PAD_LEFT) . "%'");
+    $row = $result->fetch_assoc();
+    $max_asset_number = intval($row['max_num']);
+    
+    if ($asset_type === 'new_purchase') {
+        $acquisition_date = $post_data['acquisition_date'];
+        $vendor_donor = $post_data['vendor_donor'] ?? '';
+        $purchase_cost = floatval($post_data['purchase_cost']);
+        $current_value = $purchase_cost; // Set current value equal to purchase cost
+        $taxable_amount = floatval($post_data['taxable_amount'] ?? 0.00);
+    } else {
+        // For existing assets
+        $acquisition_date = date('Y-m-d'); // Use todays date
+        $vendor_donor = '';
+        $purchase_cost = 0.00;
+        $current_value = 0.00;
+        $taxable_amount = floatval($post_data['taxable_amount'] ?? 0.00);
+    }
+    
+    $rental_status = $post_data['rental_status'] ?? 'non_rental';
+    $description = $post_data['description'] ?? '';
+    $asset_name = $post_data['asset_name'];
 
-        $stmt = $conn->prepare("INSERT INTO assets (mahal_id, asset_code, name, category_id, description, location, acquisition_date, vendor_donor, purchase_cost, current_value, taxable_amount, rental_status, condition_status, maintenance_frequency, assigned_to, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    // Set default values for removed fields
+    $location = '';
+    $assigned_to = NULL;
+    $maintenance_frequency = NULL;
+    $notes = '';
+    $condition_status = 'good'; // Default condition
 
-        // Variable to bind for asset code, will be updated in loop
-        $current_asset_code = '';
-        $stmt->bind_param(
-          "ississsdddssssisi",
-          $mahal_id,
-          $current_asset_code,
-          $asset_name,
-          $post_data['category_id'],
-          $description,
-          $location,
-          $acquisition_date,
-          $vendor_donor,
-          $purchase_cost,
-          $current_value,
-          $taxable_amount,
-          $rental_status,
-          $condition_status,
-          $maintenance_frequency,
-          $assigned_to,
-          $notes,
-          $user_id
-        );
+    $stmt = $conn->prepare("INSERT INTO assets (mahal_id, asset_code, name, category_id, description, location, acquisition_date, vendor_donor, purchase_cost, current_value, taxable_amount, rental_status, condition_status, maintenance_frequency, assigned_to, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-        // Loop to insert assets
-        for ($i = 0; $i < $quantity; $i++) {
-          $next_asset_number = $existing_asset_count + 1 + $i;
-          $current_asset_code = "AST" . str_pad($mahal_id, 3, '0', STR_PAD_LEFT) . str_pad($next_asset_number, 4, '0', STR_PAD_LEFT);
+    // Variable to bind for asset code, will be updated in loop
+    $current_asset_code = '';
+    $stmt->bind_param(
+        "ississsdddssssisi",
+        $mahal_id,
+        $current_asset_code,
+        $asset_name,
+        $post_data['category_id'],
+        $description,
+        $location,
+        $acquisition_date,
+        $vendor_donor,
+        $purchase_cost,
+        $current_value,
+        $taxable_amount,
+        $rental_status,
+        $condition_status,
+        $maintenance_frequency,
+        $assigned_to,
+        $notes,
+        $user_id
+    );
 
-          if ($stmt->execute()) {
+    // Loop to insert assets - start from max+1 instead of count+1
+    for ($i = 0; $i < $quantity; $i++) {
+        $next_asset_number = $max_asset_number + 1 + $i;
+        $current_asset_code = "AST" . str_pad($mahal_id, 3, '0', STR_PAD_LEFT) . 
+                              str_pad($next_asset_number, 4, '0', STR_PAD_LEFT);
+
+        if ($stmt->execute()) {
             $success_count++;
             $new_asset_id = $conn->insert_id;
 
             // AUTOMATIC: Create Finance Transaction ONLY for New Purchase
             if ($asset_type === 'new_purchase' && $purchase_cost > 0) {
-              $trans_date = $acquisition_date;
-              $trans_year = date('Y', strtotime($trans_date));
+                $trans_date = $acquisition_date;
+                $trans_year = date('Y', strtotime($trans_date));
 
-              // 1. Calculate next Voucher Number
-              $rc_stmt = $conn->prepare("SELECT COUNT(*) FROM transactions WHERE user_id = ? AND YEAR(transaction_date) = ?");
-              $rc_val = 0;
-              $rc_count = 0;
-              if ($rc_stmt) {
-                $rc_stmt->bind_param("ii", $user_id, $trans_year);
-                $rc_stmt->execute();
-                $rc_stmt->bind_result($rc_count);
-                if ($rc_stmt->fetch()) {
-                  $rc_val = $rc_count;
+                // 1. Calculate next Voucher Number
+                $rc_stmt = $conn->prepare("SELECT COUNT(*) FROM transactions WHERE user_id = ? AND YEAR(transaction_date) = ?");
+                $rc_val = 0;
+                $rc_count = 0;
+                if ($rc_stmt) {
+                    $rc_stmt->bind_param("ii", $user_id, $trans_year);
+                    $rc_stmt->execute();
+                    $rc_stmt->bind_result($rc_count);
+                    if ($rc_stmt->fetch()) {
+                        $rc_val = $rc_count;
+                    }
+                    $rc_stmt->close();
                 }
-                $rc_stmt->close();
-              }
-              $next_rc_num = $rc_val + 1;
-              $receipt_no = "V" . $next_rc_num . "/" . $trans_year; // V for Expense
+                $next_rc_num = $rc_val + 1;
+                $receipt_no = "V" . $next_rc_num . "/" . $trans_year; // V for Expense
 
-              // 2. Insert Transaction
-              $desc = "Asset Purchase: " . $asset_name . " (" . $current_asset_code . ")";
+                $desc = "Asset Purchase: " . $asset_name . " (" . $current_asset_code . ")";
+                $paid_to = !empty($vendor_donor) ? $vendor_donor : ''; // Use empty string, not null
+                $current_time = date('Y-m-d H:i:s');
 
-              // Use vendor_donor as paid_to
-              $paid_to = !empty($vendor_donor) ? $vendor_donor : null;
-
-              $t_stmt = $conn->prepare("INSERT INTO transactions (user_id, transaction_date, type, category, amount, description, payment_mode, asset_id, receipt_no, donor_details) VALUES (?, ?, 'EXPENSE', 'PURCHASE', ?, ?, 'CASH', ?, ?, ?)");
-              if ($t_stmt) {
-                $t_stmt->bind_param("isdsiss", $user_id, $trans_date, $purchase_cost, $desc, $new_asset_id, $receipt_no, $paid_to);
-                if (!$t_stmt->execute()) {
-                  error_log("Failed to insert asset transaction: " . $t_stmt->error);
+                // First, let's check what columns exist
+                $columns = [];
+                $col_result = $conn->query("SHOW COLUMNS FROM transactions");
+                while ($col = $col_result->fetch_assoc()) {
+                    $columns[] = $col['Field'];
                 }
-                $t_stmt->close();
-              } else {
-                error_log("Failed to prepare asset transaction insert: " . $conn->error);
-              }
+
+                // Build SQL based on actual columns
+                $fields = ['user_id', 'transaction_date', 'type', 'category', 'amount', 'description', 'payment_mode', 'receipt_no'];
+                $values = [];
+                $types = "";
+                $params = [];
+
+                // Always add these basic fields
+                $fields_list = "user_id, transaction_date, type, category, amount, description, payment_mode, receipt_no";
+                $placeholders = "?, ?, 'EXPENSE', 'PURCHASE', ?, ?, 'CASH', ?";
+                $types = "isdss"; // for user_id, date, amount, description, receipt_no
+                $params = [$user_id, $trans_date, $purchase_cost, $desc, $receipt_no];
+
+                // Add donor_details if it exists
+                if (in_array('donor_details', $columns)) {
+                    $fields_list .= ", donor_details";
+                    $placeholders .= ", ?";
+                    $types .= "s";
+                    $params[] = $paid_to;
+                }
+
+                // Add created_at if it exists
+                if (in_array('created_at', $columns)) {
+                    $fields_list .= ", created_at";
+                    $placeholders .= ", ?";
+                    $types .= "s";
+                    $params[] = $current_time;
+                }
+
+                // Add asset_id if it exists
+                if (in_array('asset_id', $columns)) {
+                    $fields_list .= ", asset_id";
+                    $placeholders .= ", ?";
+                    $types .= "i";
+                    $params[] = $new_asset_id;
+                }
+
+                // Construct and execute the query
+                $sql = "INSERT INTO transactions ($fields_list) VALUES ($placeholders)";
+                $t_stmt = $conn->prepare($sql);
+
+                if ($t_stmt) {
+                    // Dynamically bind parameters
+                    $t_stmt->bind_param($types, ...$params);
+                    
+                    if (!$t_stmt->execute()) {
+                        error_log("Failed to insert asset transaction: " . $t_stmt->error);
+                        echo "<script>alert('Transaction error: " . addslashes($t_stmt->error) . "');</script>";
+                    } else {
+                        error_log("ASSET PURCHASE TRANSACTION CREATED SUCCESSFULLY - ID: " . $conn->insert_id);
+                        echo "<script>console.log('Transaction created with ID: " . $conn->insert_id . "');</script>";
+                    }
+                    $t_stmt->close();
+                } else {
+                    error_log("Failed to prepare: " . $conn->error);
+                    echo "<script>alert('Prepare error: " . addslashes($conn->error) . "');</script>";
+                }
             }
 
-          } else {
+        } else {
             $last_error = $stmt->error;
-          }
         }
+    }
 
-        $stmt->close();
+    $stmt->close();
 
-        if ($success_count > 0) {
-          $msg = $success_count . ($success_count == 1 ? " Asset" : " Assets") . " added successfully!";
-          echo "<script>
+    if ($success_count > 0) {
+        $msg = $success_count . ($success_count == 1 ? " Asset" : " Assets") . " added successfully!";
+        echo "<script>
             alert('$msg');
             window.location.href = window.location.href;
         </script>";
-        } else {
-          echo "<script>alert('Error saving asset(s): " . addslashes($last_error) . "');</script>";
-        }
-        exit;
-
+    } else {
+        echo "<script>alert('Error saving asset(s): " . addslashes($last_error) . "');</script>";
+    }
+    exit;
 
       case 'schedule_maintenance':
         $stmt = $conn->prepare("INSERT INTO asset_maintenance (mahal_id, asset_id, maintenance_type, description, scheduled_date, due_date, priority, assigned_to, estimated_cost, created_by) VALUES (?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?)");
