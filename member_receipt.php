@@ -352,8 +352,7 @@ $selfUrl = $origin . htmlspecialchars($_SERVER['REQUEST_URI']);
             .sheet {
                 max-width: 100%;
                 width: 100%;
-                height: 138.5mm; /* half of A4 (148.5mm) minus body padding (8mm top+8mm bottom offset) */
-                overflow: hidden;
+                min-height: 138.5mm; /* half of A4 (148.5mm) minus body padding (8mm top+8mm bottom offset) */
                 border: none;
                 border-radius: 0;
                 padding: 16px;

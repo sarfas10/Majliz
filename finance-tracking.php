@@ -1650,6 +1650,13 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     </select>
                     <input type="hidden" id="entryAssetId" name="asset_id" value="">
                 </div>
+                
+                <!-- NEW: Hidden Group for Asset Expense Linking -->
+                <div class="form-group" id="linkedAssetExpenseGroup" style="display:none; position:relative;">
+                    <label class="form-label">Search / Select Asset</label>
+                    <input type="text" id="assetExpenseSearchInput" class="form-input" placeholder="Search asset name..." autocomplete="off" oninput="onAssetExpenseInput()" onfocus="showAssetExpenseDropdown()">
+                    <div id="assetExpenseDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #dee2e6; border-radius:0 0 4px 4px; border-top:none; max-height:200px; overflow-y:auto; z-index:1000; box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
+                </div>
 
 
                 <div class="form-group">
@@ -2193,6 +2200,14 @@ $custom_dues_json = json_encode($custom_dues_categories);
             document.getElementById('linkedAssetTaxGroup').style.display = 'none';
             document.getElementById('linkedAssetTaxSelect').innerHTML = '<option value="">-- Manual Entry --</option>';
             document.getElementById('entryAssetId').value = '';
+            
+            const linkedAssetExpenseGroup = document.getElementById('linkedAssetExpenseGroup');
+            if(linkedAssetExpenseGroup) {
+                linkedAssetExpenseGroup.style.display = 'none';
+                document.getElementById('assetExpenseDropdown').innerHTML = '';
+                document.getElementById('assetExpenseSearchInput').value = '';
+            }
+
             document.getElementById('staffSalaryGroup').style.display = 'none';
             document.getElementById('salaryAmountTypeGroup').style.display = 'none';
             document.getElementById('customSalaryAmountGroup').style.display = 'none';
@@ -2228,19 +2243,35 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 asset_id = parseInt(assetIdInput.value);
             }
 
-            // For ASSET RENT, get the asset name from the selected option and append to category
-            if (category === 'ASSET RENT' && asset_id) {
-                const assetSelect = document.getElementById('linkedBookingSelect');
-                const selectedOption = assetSelect.options[assetSelect.selectedIndex];
-                if (selectedOption && selectedOption.text) {
-                    // Extract asset name from the option text (format: "Asset Name (AST001)")
-                    const optionText = selectedOption.text;
-                    const assetNameMatch = optionText.match(/^([^(]+)/);
-                    if (assetNameMatch && assetNameMatch[1]) {
-                        const assetName = assetNameMatch[1].trim();
-                        category = `ASSET RENT-${assetName.toUpperCase()}`;
-                        console.log('Modified category to:', category); // Debug log
+            // For ASSET RENT or ASSET EXPENSE, get the asset name from the selected option and append to category
+            if ((category === 'ASSET RENT' || category === 'ASSET EXPENSE') && asset_id) {
+                let assetName = '';
+                if(category === 'ASSET RENT') {
+                    const assetSelect = document.getElementById('linkedBookingSelect');
+                    if (assetSelect && assetSelect.selectedIndex > -1) {
+                        const selectedOption = assetSelect.options[assetSelect.selectedIndex];
+                        if (selectedOption && selectedOption.text) {
+                            const optionText = selectedOption.text;
+                            const assetNameMatch = optionText.match(/^([^(]+)/);
+                            if (assetNameMatch && assetNameMatch[1]) {
+                                assetName = assetNameMatch[1].trim();
+                            }
+                        }
                     }
+                } else if(category === 'ASSET EXPENSE') {
+                    const searchInput = document.getElementById('assetExpenseSearchInput');
+                    if (searchInput && searchInput.value) {
+                        const optionText = searchInput.value;
+                        const assetNameMatch = optionText.match(/^([^(]+)/);
+                        if (assetNameMatch && assetNameMatch[1]) {
+                            assetName = assetNameMatch[1].trim();
+                        }
+                    }
+                }
+                
+                if (assetName) {
+                    category = `${category}-${assetName.toUpperCase()}`;
+                    console.log('Modified category to:', category); // Debug log
                 }
             }
 
@@ -2421,7 +2452,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 });
             } else if (type === 'EXPENSE') {
                 const expenseCategories = [
-                    'SALARY', 'OFFICE EXPENSE', 'PURCHASE', 'ASSET TAX', 'BUILDING EXPENSE', 'STATIONARY EXPENSE', 'ELECTRICITY BILL',
+                    'SALARY', 'OFFICE EXPENSE', 'PURCHASE', 'ASSET TAX', 'ASSET EXPENSE', 'BUILDING EXPENSE', 'STATIONARY EXPENSE', 'ELECTRICITY BILL',
                     'USTHAD FOOD', 'CLEANING EXPENSE', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'NABIDHINAM',
                     'BANK DEPOSITE', 'OTHER EXPENSES'
                 ];
@@ -2445,10 +2476,12 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const generalAmountGroup = document.getElementById('generalAmountGroup');
             const linkedBookingGroup = document.getElementById('linkedBookingGroup');
             const linkedAssetTaxGroup = document.getElementById('linkedAssetTaxGroup');
+            const linkedAssetExpenseGroup = document.getElementById('linkedAssetExpenseGroup');
 
-            // Reset both Booking and Asset Tax Group display first
+            // Reset both Booking, Asset Tax Group, and Asset Expense Group display first
             linkedBookingGroup.style.display = 'none';
             linkedAssetTaxGroup.style.display = 'none';
+            if (linkedAssetExpenseGroup) linkedAssetExpenseGroup.style.display = 'none';
 
             if (needsYear(category)) {
                 yearGroup.style.display = 'block';
@@ -2501,6 +2534,12 @@ $custom_dues_json = json_encode($custom_dues_categories);
             if (category === 'ASSET TAX' && entryType === 'EXPENSE') {
                 linkedAssetTaxGroup.style.display = 'block';
                 fetchTaxableAssets();
+            }
+
+            // Show Asset Expense Dropdown for Asset Expense
+            if (category === 'ASSET EXPENSE' && entryType === 'EXPENSE') {
+                if (linkedAssetExpenseGroup) linkedAssetExpenseGroup.style.display = 'block';
+                fetchGroupedAssets();
             }
 
             const isOtherExpense = entryType === 'EXPENSE' && needsDetail(category);
@@ -2667,6 +2706,101 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 amountInput.value = asset.taxable_amount || 0;
                 descInput.value = `Asset Tax: ${asset.name} (${asset.asset_code})`;
             }
+        }
+
+        // --- Asset Expense Linking Logic ---
+        let allGroupedAssets = [];
+
+        function fetchGroupedAssets() {
+            filterAndRenderGroupedAssets(); // clear/hide initially
+
+            fetch('finance-api.php?action=get_grouped_assets&user_id=' + encodeURIComponent(userId))
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && Array.isArray(data.assets)) {
+                        allGroupedAssets = data.assets;
+                    }
+                })
+                .catch(err => {
+                    console.error('Error fetching grouped assets:', err);
+                });
+        }
+
+        function showAssetExpenseDropdown() {
+            document.getElementById('assetExpenseDropdown').style.display = 'block';
+            filterAndRenderGroupedAssets();
+        }
+
+        document.addEventListener('mousedown', function(e) {
+            const dropdown = document.getElementById('assetExpenseDropdown');
+            const searchInput = document.getElementById('assetExpenseSearchInput');
+            if (dropdown && searchInput && dropdown.style.display === 'block') {
+                if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            }
+        });
+
+        function filterAndRenderGroupedAssets() {
+            const dropdown = document.getElementById('assetExpenseDropdown');
+            const searchInput = document.getElementById('assetExpenseSearchInput');
+            if(!dropdown || !searchInput) return;
+            
+            const searchVal = searchInput.value.toLowerCase();
+            dropdown.innerHTML = '';
+            
+            const filtered = allGroupedAssets.filter(a => {
+                return a.display_name.toLowerCase().includes(searchVal);
+            });
+
+            if (filtered.length === 0) {
+                const div = document.createElement('div');
+                div.textContent = 'No matching assets';
+                div.style.padding = '8px 12px';
+                div.style.color = '#777';
+                dropdown.appendChild(div);
+                return;
+            }
+
+            filtered.forEach(a => {
+                const div = document.createElement('div');
+                div.textContent = a.display_name;
+                div.style.padding = '8px 12px';
+                div.style.cursor = 'pointer';
+                div.style.borderBottom = '1px solid #f8f9fa';
+                
+                div.onmouseover = function() {
+                    this.style.backgroundColor = '#f1f3f5';
+                };
+                div.onmouseout = function() {
+                    this.style.backgroundColor = 'white';
+                };
+                
+                div.onmousedown = function(e) {
+                    e.preventDefault();
+                    selectAssetExpense(a);
+                };
+                dropdown.appendChild(div);
+            });
+        }
+
+        function onAssetExpenseInput() {
+            showAssetExpenseDropdown();
+            
+            const hiddenId = document.getElementById('entryAssetId');
+            hiddenId.value = '';
+        }
+
+        function selectAssetExpense(asset) {
+            const searchInput = document.getElementById('assetExpenseSearchInput');
+            const hiddenId = document.getElementById('entryAssetId');
+            const descInput = document.getElementById('entryDescription');
+            
+            searchInput.value = asset.display_name;
+            hiddenId.value = asset.id;
+            descInput.value = `Asset Expense: ${asset.display_name}`;
+            
+            document.getElementById('assetExpenseDropdown').style.display = 'none';
         }
 
         function loadStaffForSalary() {
@@ -3179,7 +3313,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 const incomeCategories = [...new Set([...standardIncomeCategories, ...customIncomeCategories])];
                 incomeCategories.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
             } else if (type === 'EXPENSE') {
-                const expenseCategories = ['SALARY', 'OFFICE EXPENSE', 'PURCHASE', 'ASSET TAX', 'BUILDING EXPENSE', 'STATIONARY EXPENSE', 'ELECTRICITY BILL', 'USTHAD FOOD', 'CLEANING EXPENSE', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'NABIDHINAM', 'BANK DEPOSITE', 'OTHER EXPENSES'];
+                const expenseCategories = ['SALARY', 'OFFICE EXPENSE', 'PURCHASE', 'ASSET TAX', 'ASSET EXPENSE', 'BUILDING EXPENSE', 'STATIONARY EXPENSE', 'ELECTRICITY BILL', 'USTHAD FOOD', 'CLEANING EXPENSE', 'CHERIYA PERUNAL', 'BALI PERUNAL', 'NABIDHINAM', 'BANK DEPOSITE', 'OTHER EXPENSES'];
                 expenseCategories.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
             }
             document.getElementById('bulkOtherExpenseGroup').style.display = 'none';
