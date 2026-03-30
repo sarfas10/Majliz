@@ -2328,8 +2328,9 @@ $custom_dues_json = json_encode($custom_dues_categories);
             let other_expense_detail = null;
             if (type === 'EXPENSE' && needsDetail(category)) {
                 const v = (document.getElementById('otherExpenseDetail').value || '').trim();
+                const detailLbl = getDetailLabel(category);
                 if (!v) {
-                    alert('Please specify the Other Expense Detail');
+                    alert('Please specify the ' + detailLbl);
                     return;
                 }
                 other_expense_detail = v;
@@ -2410,6 +2411,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
         }
 
         function needsDetail(category) {
+            if (category.startsWith('ASSET EXPENSE')) return true;
             const detailCategories = [
                 'OFFICE EXPENSE', 'PURCHASE', 'BUILDING EXPENSE', 'STATIONARY EXPENSE',
                 'ELECTRICITY BILL', 'USTHAD FOOD', 'CLEANING EXPENSE', 'CHERIYA PERUNAL',
@@ -3105,7 +3107,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
 
                 let rawDesc;
 
-                if (t.category === 'OTHER EXPENSES' && t.other_expense_detail) {
+                if ((t.category === 'OTHER EXPENSES' || t.category.startsWith('ASSET EXPENSE')) && t.other_expense_detail) {
                     rawDesc = (t.description ? (t.description + ' — ') : '') + t.other_expense_detail;
                 } else {
                     rawDesc = t.description || '-';

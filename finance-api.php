@@ -805,9 +805,9 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         'OTHER EXPENSES'
     ];
 
-    if ($type === 'EXPENSE' && in_array(strtoupper($category), $detailCategories)) {
+    if ($type === 'EXPENSE' && (in_array(strtoupper($category), $detailCategories) || strpos(strtoupper($category), 'ASSET EXPENSE') === 0)) {
         if (!$other_expense_detail) {
-            echo json_encode(['success' => false, 'message' => 'Please provide details for ' . $category]);
+            echo json_encode(['success' => false, 'message' => 'Please provide recipient / details for ' . $category]);
             exit();
         }
     }
@@ -2692,8 +2692,20 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                                     <div class="val desc"><?= $desc ?></div>
                                 </div>
                                 <?php if ($otherDetail && $otherDetail !== '-'): ?>
+                                        <?php
+                                        $lbl = 'Other Expense Detail';
+                                        if (strpos($cat, 'ASSET EXPENSE') === 0 || $cat === 'OTHER EXPENSES' || in_array($cat, ['OFFICE EXPENSE', 'PURCHASE', 'BUILDING EXPENSE', 'STATIONARY EXPENSE'])) {
+                                            $lbl = 'Recipient';
+                                        } elseif ($cat === 'USTHAD FOOD') {
+                                            $lbl = 'Which Hotel / Payee';
+                                        } elseif ($cat === 'CLEANING EXPENSE') {
+                                            $lbl = 'Paid To / Details';
+                                        } elseif ($cat === 'ELECTRICITY BILL') {
+                                            $lbl = 'Consumer No / Details';
+                                        }
+                                        ?>
                                         <div class="row">
-                                            <div class="label">Other Expense Detail</div>
+                                            <div class="label"><?= $lbl ?></div>
                                             <div class="val"><?= $otherDetail ?></div>
                                         </div>
                                 <?php endif; ?>
