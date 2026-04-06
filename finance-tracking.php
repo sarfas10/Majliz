@@ -1703,6 +1703,13 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     </div>
                 </div>
 
+                <div class="form-group" id="offeringSelectorGroup" style="display:none;">
+                    <label class="form-label">Link to Offering <small>(Optional)</small></label>
+                    <select id="entryOfferingId" class="form-select">
+                        <option value="">-- No Offering --</option>
+                    </select>
+                </div>
+
                 <div class="form-group" id="staffSalaryGroup" style="display:none;">
                     <label class="form-label">Select Staff *</label>
                     <select id="staffSalarySelect" class="form-select" onchange="handleStaffSelection()">
@@ -1732,9 +1739,8 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 </div>
 
                 <div class="form-group" id="otherExpenseDetailGroup" style="display:none;">
-                    <label class="form-label">Other Expense Detail</label>
-                    <input type="text" id="otherExpenseDetail" class="form-input"
-                        placeholder="e.g., plumber charge, minor repair, etc." />
+                    <label class="form-label" id="otherExpenseDetailLabel">Recipient</label>
+                    <input type="text" id="otherExpenseDetail" class="form-input" />
                 </div>
 
                 <div class="form-group" id="generalAmountGroup">
@@ -1805,7 +1811,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 </div>
 
                 <div class="form-group" id="bulkOtherExpenseGroup" style="display:none;">
-                    <label class="form-label">Other Expense Detail</label>
+                    <label class="form-label" id="bulkOtherExpenseDetailLabel">Recipient</label>
                     <input type="text" id="bulkOtherExpenseDetail" class="form-input" />
                 </div>
 
@@ -2000,6 +2006,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
                                     ${advanceLine}
                                 `;
                                 donorInfoBox.style.display = 'block';
+                            }
+                            
+                            // Fetch offerings for this member
+                            if (donorMemberId) {
+                                fetchMemberOfferings(donorMemberId);
                             }
                         });
                     });
@@ -2219,6 +2230,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const dr = document.getElementById('donorResults');
             if (dr) dr.style.display = 'none';
 
+            const offeringGroup = document.getElementById('offeringSelectorGroup');
+            if (offeringGroup) offeringGroup.style.display = 'none';
+            const offeringSelect = document.getElementById('entryOfferingId');
+            if (offeringSelect) offeringSelect.innerHTML = '<option value="">-- No Offering --</option>';
+
             const categorySelect = document.getElementById('entryCategory');
             categorySelect.innerHTML = '<option value="">Select Category</option>';
             document.getElementById('entryType').focus();
@@ -2349,7 +2365,8 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 other_expense_detail: other_expense_detail,
                 staff_id: staff_id,
                 asset_id: asset_id,
-                asset_booking_id: asset_booking_id
+                asset_booking_id: asset_booking_id,
+                offering_id: document.getElementById('entryOfferingId').value || null
             };
 
             console.log('Saving transaction with category:', finalCategory); // Debug log
@@ -2438,6 +2455,13 @@ $custom_dues_json = json_encode($custom_dues_categories);
             document.getElementById('entryYear').value = '';
             staffSalaryGroup.style.display = 'none';
 
+            // Hide offering selector when type changes
+            const offeringGroup = document.getElementById('offeringSelectorGroup');
+            if (offeringGroup && type !== 'INCOME') {
+                offeringGroup.style.display = 'none';
+                const offeringSelect = document.getElementById('entryOfferingId');
+                if (offeringSelect) offeringSelect.innerHTML = '<option value="">-- No Offering --</option>';
+            }
             if (type === 'INCOME') {
                 const standardIncomeCategories = [
                     'MONTHLY FEE', 'DONATION', 'FRIDAY INCOME', 'NABIDHINAM', 'CHERIYA PERUNAL',
@@ -2550,6 +2574,17 @@ $custom_dues_json = json_encode($custom_dues_categories);
             if (isOtherExpense) {
                 const labelEl = otherGroup.querySelector('label');
                 if (labelEl) labelEl.textContent = getDetailLabel(category);
+                // Remove placeholder for asset expense (just a recipient name)
+                const inputEl = document.getElementById('otherExpenseDetail');
+                if (inputEl) {
+                    if (category.startsWith('ASSET EXPENSE')) {
+                        inputEl.placeholder = '';
+                    } else if (category === 'ELECTRICITY BILL') {
+                        inputEl.placeholder = 'e.g., Consumer No / EB No';
+                    } else {
+                        inputEl.placeholder = 'e.g., name, company, or details';
+                    }
+                }
             } else {
                 document.getElementById('otherExpenseDetail').value = '';
             }
@@ -2573,6 +2608,12 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 document.getElementById('salaryAmountTypeGroup').style.display = 'none';
                 document.getElementById('customSalaryAmountGroup').style.display = 'none';
                 if (generalAmountGroup) generalAmountGroup.style.display = 'block';
+            }
+
+            // Check for offerings if member is selected
+            const memberId = document.getElementById('donor_member_id').value;
+            if (memberId && entryType === 'INCOME') {
+                fetchMemberOfferings(memberId);
             }
         }
 
@@ -3088,6 +3129,11 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     donorInfoBox.innerHTML = '';
                     donorInfoBox.style.display = 'none';
                 }
+                // Hide offering selector for non-members
+                const offeringGroup = document.getElementById('offeringSelectorGroup');
+                if (offeringGroup) offeringGroup.style.display = 'none';
+                const offeringSelect = document.getElementById('entryOfferingId');
+                if (offeringSelect) offeringSelect.innerHTML = '<option value="">-- No Offering --</option>';
             }
         }
 
@@ -3289,6 +3335,52 @@ $custom_dues_json = json_encode($custom_dues_categories);
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
+        }
+
+        function fetchMemberOfferings(memberId) {
+            const group = document.getElementById('offeringSelectorGroup');
+            const select = document.getElementById('entryOfferingId');
+            
+            // Only show for INCOME type
+            if (document.getElementById('entryType').value !== 'INCOME') {
+                group.style.display = 'none';
+                return;
+            }
+
+            // Only fetch for member offerings (not non-members)
+            if (!memberId) {
+                group.style.display = 'none';
+                return;
+            }
+
+            select.innerHTML = '<option value="">Loading...</option>';
+            
+            fetch('offerings_api.php?action=list&member_id=' + memberId)
+                .then(r => r.json())
+                .then(res => {
+                    select.innerHTML = '<option value="">-- No Offering --</option>';
+                    if (res.success && res.data && res.data.length > 0) {
+                        const pending = res.data.filter(o => o.status === 'pending');
+                        if (pending.length > 0) {
+                            group.style.display = 'block';
+                            pending.forEach(o => {
+                                const opt = document.createElement('option');
+                                opt.value = o.id;
+                                const pendingAmt = o.offering_type === 'Money' ? ` - ₹${Number(o.pending_amount).toLocaleString('en-IN')} pending` : '';
+                                opt.textContent = `${o.offering_type}: ${o.offering_value}${pendingAmt} (${o.offering_date})`;
+                                select.appendChild(opt);
+                            });
+                        } else {
+                            group.style.display = 'none';
+                        }
+                    } else {
+                        group.style.display = 'none';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error fetching offerings:', err);
+                    group.style.display = 'none';
+                });
         }
 
         function openBulkModal() {

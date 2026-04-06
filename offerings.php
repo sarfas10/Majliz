@@ -523,7 +523,7 @@ $conn->close();
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 860px;
+            min-width: 1060px;
         }
 
         thead th {
@@ -981,6 +981,8 @@ $conn->close();
                                 <th>Offered By</th>
                                 <th>Type</th>
                                 <th>Value / Amount</th>
+                                <th>Paid</th>
+                                <th>Pending</th>
                                 <th>Date</th>
                                 <th>Status</th>
                                 <th>Notes</th>
@@ -1214,7 +1216,7 @@ $conn->close();
             const tbody = document.getElementById('offeringsBody');
 
             if (!filtered.length) {
-                tbody.innerHTML = `<tr><td colspan="8" class="empty-state">
+                tbody.innerHTML = `<tr><td colspan="10" class="empty-state">
             <i class="fas fa-hand-holding-heart"></i><br>No offerings found
         </td></tr>`;
                 return;
@@ -1233,6 +1235,8 @@ $conn->close();
             <td>${byHtml}<br><small style="color:var(--text-lighter);">${isMember ? '<span class="badge badge-member" style="font-size:10px;">Member</span>' : '<span class="badge badge-nonmember" style="font-size:10px;">Non-Member</span>'}</small></td>
             <td><strong>${esc(o.offering_type)}</strong></td>
             <td style="font-weight:700;color:var(--primary);">${esc(o.offering_value)}</td>
+            <td style="color:var(--success);font-weight:600;">${o.offering_type === 'Money' ? '₹' + Number(o.paid_amount || 0).toLocaleString('en-IN') : '<span style="color:var(--text-lighter);">N/A</span>'}</td>
+            <td style="font-weight:600;">${o.offering_type === 'Money' ? (() => { const p = Number(o.pending_amount || 0); return p > 0 ? '<span style="color:var(--warning)">₹' + p.toLocaleString('en-IN') + '</span>' : p < 0 ? '<span style="color:var(--error)">₹' + Math.abs(p).toLocaleString('en-IN') + ' over</span>' : '<span style="color:var(--success)">Paid</span>'; })() : '<span style="color:var(--text-lighter);">N/A</span>'}</td>
             <td>${date}</td>
             <td>${badge}</td>
             <td style="max-width:180px;color:var(--text-light);font-size:13px;">${esc(o.notes || o.description || '—')}</td>
@@ -1241,9 +1245,10 @@ $conn->close();
                     <button class="btn btn-secondary btn-sm btn-icon" title="Edit" onclick="editOffering(${o.id})">
                         <i class="fas fa-edit"></i>
                     </button>
+                    ${o.status === 'pending' ? `
                     <button class="btn btn-success btn-sm" title="Insert to Transactions" onclick="openTxModal(${o.id})" style="font-size:12px;padding:7px 10px;">
                         <i class="fas fa-receipt"></i> Record
-                    </button>
+                    </button>` : ''}
                     <button class="btn btn-danger btn-sm btn-icon" title="Delete" onclick="askDelete(${o.id})">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -1385,20 +1390,29 @@ $conn->close();
             if (o) openModal(o);
         }
 
-        // ── Insert to Transactions ────────────────────────────────────
+        // ── Insert to Transactions ────────────────────────────────────────────────
         let txTargetId = null;
+        let txTargetOffering = null;
 
         function openTxModal(id) {
             const o = allOfferings.find(x => x.id == id);
             if (!o) return;
             txTargetId = id;
+            txTargetOffering = o;
             document.getElementById('txOfferingId').value = id;
             const byName = o.member_name || o.offered_by || '—';
             document.getElementById('txOfferedBy').value = byName;
             document.getElementById('txOriginalValue').value = `${o.offering_type}: ${o.offering_value}`;
-            // Pre-fill amount only if it looks numeric (money type)
-            const numericVal = parseFloat((o.offering_value || '').replace(/[^0-9.]/g, ''));
-            document.getElementById('txAmount').value = (!isNaN(numericVal) && numericVal > 0) ? numericVal : '';
+            // Pre-fill with pending amount if money type, else full numeric value
+            let prefillAmount = '';
+            if (o.offering_type === 'Money') {
+                const pending = parseFloat(o.pending_amount || 0);
+                prefillAmount = pending > 0 ? pending : '';
+            } else {
+                const numericVal = parseFloat((o.offering_value || '').replace(/[^0-9.]/g, ''));
+                prefillAmount = (!isNaN(numericVal) && numericVal > 0) ? numericVal : '';
+            }
+            document.getElementById('txAmount').value = prefillAmount;
             document.getElementById('txDate').value = o.offering_date || new Date().toISOString().split('T')[0];
             document.getElementById('txDesc').value = `Offering from ${byName} – ${o.offering_type}: ${o.offering_value}`;
             document.getElementById('txBackdrop').classList.add('open');
@@ -1407,6 +1421,7 @@ $conn->close();
         function closeTxModal() {
             document.getElementById('txBackdrop').classList.remove('open');
             txTargetId = null;
+            txTargetOffering = null;
         }
 
         async function insertToTransactions() {
@@ -1417,6 +1432,12 @@ $conn->close();
             if (!amount || amount <= 0) { alert('Please enter a valid cash amount.'); return; }
             if (!date) { alert('Please select a transaction date.'); return; }
 
+            // Get the member_id from the offering if it's a member offering
+            const offeringMemberId = txTargetOffering && txTargetOffering.member_id
+                ? parseInt(txTargetOffering.member_id)
+                : null;
+            const donorName = document.getElementById('txOfferedBy').value || null;
+
             const payload = {
                 user_id: <?php echo $user_id; ?>,
                 date: date,
@@ -1425,8 +1446,9 @@ $conn->close();
                 amount: amount,
                 description: desc || null,
                 payment_mode: 'CASH',
-                donor_member_id: null,
-                donor_details: document.getElementById('txOfferedBy').value || null
+                donor_member_id: offeringMemberId,
+                donor_details: donorName,
+                offering_id: txTargetId
             };
 
             try {
@@ -1438,7 +1460,9 @@ $conn->close();
                 const json = await res.json();
                 if (json.success) {
                     closeTxModal();
-                    alert('✅ Income transaction recorded successfully!');
+                    // Reload offerings to reflect updated paid/pending amounts
+                    await loadOfferings();
+                    alert('✅ Income transaction recorded! Paid and pending amounts have been updated.');
                 } else {
                     alert('Error: ' + (json.message || 'Could not save transaction'));
                 }

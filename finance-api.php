@@ -73,9 +73,11 @@ $conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipt_no VARCH
 $conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS asset_id INT NULL");
 $conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS asset_booking_id INT NULL");
 $conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS asset_maintenance_id INT NULL");
+$conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS offering_id INT NULL");
 $conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_asset_id (asset_id)");
 $conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_asset_booking_id (asset_booking_id)");
 $conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_asset_maintenance_id (asset_maintenance_id)");
+$conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_offering_id (offering_id)");
 
 // Ensure members columns exist (only if table already exists from addmember.php)
 $checkMembers = $conn->query("SHOW TABLES LIKE 'members'");
@@ -767,6 +769,7 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $asset_id = isset($input['asset_id']) && $input['asset_id'] !== '' ? intval($input['asset_id']) : null;
     $asset_booking_id = isset($input['asset_booking_id']) && $input['asset_booking_id'] !== '' ? intval($input['asset_booking_id']) : null;
     $asset_maintenance_id = isset($input['asset_maintenance_id']) && $input['asset_maintenance_id'] !== '' ? intval($input['asset_maintenance_id']) : null;
+    $offering_id = isset($input['offering_id']) && $input['offering_id'] !== '' ? intval($input['offering_id']) : null;
 
     // validation
     if ($user_id <= 0) {
@@ -860,8 +863,8 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $receiptPrefix = ($type === 'EXPENSE') ? 'V' : 'R';
         $receiptNumber = $receiptPrefix . $nextReceiptNum . '/' . $transYear;
 
-        $sql = "INSERT INTO transactions (user_id, transaction_date, type, category, amount, description, other_expense_detail, donor_member_id, donor_details, staff_id, payment_mode, asset_id, asset_booking_id, asset_maintenance_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO transactions (user_id, transaction_date, type, category, amount, description, other_expense_detail, donor_member_id, donor_details, staff_id, payment_mode, asset_id, asset_booking_id, asset_maintenance_id, offering_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
         if (!$stmt) {
             throw new Exception("Database prepare error: " . $conn->error);
@@ -880,7 +883,7 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $d_payment_mode = $payment_mode;
 
         $stmt->bind_param(
-            "isssdssisssiii",
+            "isssdssisssiiii",
             $u,
             $d_date,
             $d_type,
@@ -894,7 +897,8 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             $d_payment_mode,
             $asset_id,
             $asset_booking_id,
-            $asset_maintenance_id
+            $asset_maintenance_id,
+            $offering_id
         );
 
         if (!$stmt->execute()) {
@@ -2184,7 +2188,7 @@ if ($action === 'get_grouped_assets' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                         </div>
                         <?php if ($otherDetail && $otherDetail !== '-'): ?>
                                 <div class="row">
-                                    <div class="label">Other Expense Detail</div>
+                                    <div class="label">Recipient</div>
                                     <div class="val"><?= $otherDetail ?></div>
                                 </div>
                         <?php endif; ?>

@@ -39,17 +39,27 @@ CREATE TABLE IF NOT EXISTS member_offerings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ");
 
+// Ensure offering_id column exists in transactions (in case finance-api.php hasn't run first)
+$conn->query("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS offering_id INT NULL");
+$conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_offering_id (offering_id)");
+
 $action = $_GET['action'] ?? ($_POST['action'] ?? '');
 
 // ── LIST ────────────────────────────────────────────────────────────────────
 if ($action === 'list') {
     $filter_member_id = isset($_GET['member_id']) ? (int) $_GET['member_id'] : 0;
 
+    // Use REGEXP_REPLACE if available (MySQL 8+) to strip non-numeric chars, fallback to plain CAST
+    // For safety, we extract numeric prefix only from offering_value
     $sql = "
         SELECT o.*,
-               m.head_name AS member_name
+               m.head_name AS member_name,
+               COALESCE(SUM(t.amount), 0) AS paid_amount,
+               (CAST(REGEXP_REPLACE(o.offering_value, '[^0-9.]', '') AS DECIMAL(12,2)) - COALESCE(SUM(t.amount), 0)) AS pending_amount,
+               CAST(REGEXP_REPLACE(o.offering_value, '[^0-9.]', '') AS DECIMAL(12,2)) AS numeric_offering_value
         FROM   member_offerings o
         LEFT JOIN members m ON m.id = o.member_id AND m.mahal_id = o.mahal_id
+        LEFT JOIN transactions t ON t.offering_id = o.id
         WHERE  o.mahal_id = ?
     ";
     $params = [$mahal_id];
@@ -61,13 +71,33 @@ if ($action === 'list') {
         $types .= 'i';
     }
 
-    $sql .= " ORDER BY o.offering_date DESC, o.id DESC";
+    $sql .= " GROUP BY o.id ORDER BY o.offering_date DESC, o.id DESC";
 
     $stmt = $conn->prepare($sql);
     $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $result = $stmt->get_result();
     $rows = $result->fetch_all(MYSQLI_ASSOC);
+    
+    // Dynamically update status based on pending amount — only for Money-type offerings
+    foreach ($rows as &$row) {
+        if ($row['status'] !== 'cancelled') {
+            // Only auto-track status for Money offerings with a valid numeric value
+            if ($row['offering_type'] === 'Money' && $row['numeric_offering_value'] > 0) {
+                if ((float)$row['pending_amount'] <= 0) {
+                    $row['status'] = 'fulfilled';
+                } else {
+                    $row['status'] = 'pending';
+                }
+            }
+            // For non-Money offerings, keep the manually-set status
+        }
+        // Round display values
+        $row['paid_amount'] = round((float)($row['paid_amount'] ?? 0), 2);
+        $row['pending_amount'] = round((float)($row['pending_amount'] ?? 0), 2);
+    }
+    unset($row); // Break the reference
+
     $stmt->close();
 
     echo json_encode(['success' => true, 'data' => $rows]);
