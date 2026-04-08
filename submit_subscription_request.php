@@ -66,6 +66,15 @@ $stmt = $conn->prepare($sql);
 $stmt->bind_param("iisd", $subscription_mahal_id, $plan_id, $duration_type, $amount);
 
 if ($stmt->execute()) {
+    // 3. Sync register.status to 'pending' ONLY IF they are currently 'inactive'
+    // (If they are currently 'active' and renewing, they should stay 'active')
+    $updStatusStmt = $conn->prepare("UPDATE register SET status = 'pending' WHERE id = ? AND status = 'inactive'");
+    if ($updStatusStmt) {
+        $updStatusStmt->bind_param("i", $subscription_mahal_id);
+        $updStatusStmt->execute();
+        $updStatusStmt->close();
+    }
+
     echo json_encode(['success' => true, 'message' => 'Subscription request submitted successfully.']);
 } else {
     echo json_encode(['success' => false, 'message' => 'Failed to submit request: ' . $conn->error]);

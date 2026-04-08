@@ -75,32 +75,63 @@ if ($action === 'approve') {
         // Function to create/renew subscription
         function renewSubscription($conn, $mahal_id, $plan_id, $months)
         {
-            // Check for existing active/expired subscription to determine start date
-            $checkSql = "SELECT end_date FROM subscriptions WHERE mahal_id = ? AND status IN ('active', 'expired') ORDER BY end_date DESC LIMIT 1";
-            $chk = $conn->prepare($checkSql);
-            $chk->bind_param("i", $mahal_id);
-            $chk->execute();
-            $chkRes = $chk->get_result();
+            // Check if an ACTIVE subscription already exists
+            $activeSql = "SELECT id, end_date FROM subscriptions WHERE mahal_id = ? AND status = 'active' ORDER BY end_date DESC LIMIT 1";
+            $chkActive = $conn->prepare($activeSql);
+            $chkActive->bind_param("i", $mahal_id);
+            $chkActive->execute();
+            $activeRes = $chkActive->get_result();
 
-            $start_date = date('Y-m-d');
-            if ($chkRes->num_rows > 0) {
-                $lastSub = $chkRes->fetch_assoc();
-                $lastEnd = $lastSub['end_date'];
-                if ($lastEnd > $start_date) {
-                    // Extend from last end date
-                    $start_date = date('Y-m-d', strtotime($lastEnd . ' + 1 day'));
+            if ($activeRes->num_rows > 0) {
+                // ── EXTEND existing active subscription ──────────────────────
+                // Extend end_date from wherever it currently ends, and update plan
+                $activeSub = $activeRes->fetch_assoc();
+                $currentEnd = $activeSub['end_date'];
+                $activeId   = $activeSub['id'];
+                $chkActive->close();
+
+                // Start extension from day after current end_date
+                $new_end = date('Y-m-d', strtotime($currentEnd . " + $months months"));
+                $new_end = date('Y-m-d', strtotime($new_end . " - 1 day")); // inclusive end
+
+                $upd = $conn->prepare(
+                    "UPDATE subscriptions SET plan_id = ?, end_date = ? WHERE id = ?"
+                );
+                $upd->bind_param("isi", $plan_id, $new_end, $activeId);
+                $upd->execute();
+                $upd->close();
+
+            } else {
+                // ── No active subscription — check inactive/expired for start date ──
+                $chkActive->close();
+
+                $lastSql = "SELECT end_date FROM subscriptions 
+                            WHERE mahal_id = ? AND status IN ('inactive', 'expired') 
+                            ORDER BY end_date DESC LIMIT 1";
+                $chkLast = $conn->prepare($lastSql);
+                $chkLast->bind_param("i", $mahal_id);
+                $chkLast->execute();
+                $lastRes = $chkLast->get_result();
+
+                $start_date = date('Y-m-d');
+                if ($lastRes->num_rows > 0) {
+                    $lastEnd = $lastRes->fetch_assoc()['end_date'];
+                    if ($lastEnd > $start_date) {
+                        $start_date = date('Y-m-d', strtotime($lastEnd . ' + 1 day'));
+                    }
                 }
+                $chkLast->close();
+
+                $end_date = date('Y-m-d', strtotime($start_date . " + $months months"));
+                $end_date = date('Y-m-d', strtotime($end_date . " - 1 day")); // inclusive end
+
+                $ins = $conn->prepare(
+                    "INSERT INTO subscriptions (mahal_id, plan_id, start_date, end_date, status) VALUES (?, ?, ?, ?, 'active')"
+                );
+                $ins->bind_param("iiss", $mahal_id, $plan_id, $start_date, $end_date);
+                $ins->execute();
+                $ins->close();
             }
-            $chk->close();
-
-            $end_date = date('Y-m-d', strtotime($start_date . " + $months months"));
-            // Adjust to end of day logic (Jan 1 to Jan 31 or Jan 1 to Dec 31)
-            $end_date = date('Y-m-d', strtotime($end_date . " - 1 day"));
-
-            $ins = $conn->prepare("INSERT INTO subscriptions (mahal_id, plan_id, start_date, end_date, status) VALUES (?, ?, ?, ?, 'active')");
-            $ins->bind_param("iiss", $mahal_id, $plan_id, $start_date, $end_date);
-            $ins->execute();
-            $ins->close();
         }
 
         // Renew Main Mahal
@@ -114,6 +145,12 @@ if ($action === 'approve') {
         $updReq = $conn->prepare("UPDATE subscription_requests SET status = 'approved' WHERE id = ?");
         $updReq->bind_param("i", $request_id);
         $updReq->execute();
+
+        // Sync register.status to 'active'
+        $updStatus = $conn->prepare("UPDATE register SET status = 'active' WHERE id = ?");
+        $updStatus->bind_param("i", $request['mahal_id']);
+        $updStatus->execute();
+        $updStatus->close();
 
         $conn->commit();
         echo json_encode(['success' => true, 'message' => 'Request approved and subscription updated.']);

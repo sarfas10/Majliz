@@ -516,6 +516,45 @@ try {
         $stmtSub->close();
     }
 
+    // Fetch Pending Subscription Request (if any)
+    $pending_request = null;
+    $tableCheckSR = $conn->query("SHOW TABLES LIKE 'subscription_requests'");
+    if ($tableCheckSR && $tableCheckSR->num_rows > 0) {
+        $pendingSql = "SELECT sr.*, p.title as plan_title 
+                       FROM subscription_requests sr
+                       JOIN plans p ON sr.plan_id = p.id
+                       WHERE sr.mahal_id = ? AND sr.status = 'pending'
+                       ORDER BY sr.created_at DESC LIMIT 1";
+        if ($stmtPending = $conn->prepare($pendingSql)) {
+            $stmtPending->bind_param("i", $user_id);
+            $stmtPending->execute();
+            $pendingRes = $stmtPending->get_result();
+            if ($pendingRes->num_rows > 0) {
+                $pending_request = $pendingRes->fetch_assoc();
+            }
+            $stmtPending->close();
+        }
+    }
+
+    // Fetch Last Inactive/Expired Subscription (for showing previous plan name on inactive state)
+    $last_subscription = null;
+    if (!$active_subscription) {
+        $lastSubSql = "SELECT s.*, p.title as plan_title 
+                       FROM subscriptions s 
+                       JOIN plans p ON s.plan_id = p.id 
+                       WHERE s.mahal_id = ? AND s.status IN ('inactive', 'expired')
+                       ORDER BY s.end_date DESC LIMIT 1";
+        if ($stmtLast = $conn->prepare($lastSubSql)) {
+            $stmtLast->bind_param("i", $user_id);
+            $stmtLast->execute();
+            $lastRes = $stmtLast->get_result();
+            if ($lastRes->num_rows > 0) {
+                $last_subscription = $lastRes->fetch_assoc();
+            }
+            $stmtLast->close();
+        }
+    }
+
     // Fetch Sponsored Mahals
     $sponsored_mahals = [];
     $sponSql = "SELECT r.id, r.name, r.registration_no, r.phone, r.email, r.created_at, r.status, 
@@ -3248,68 +3287,148 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                     </div>
 
 
-                    <!-- Renew Subscription Card -->
-                    <!-- Renew Subscription Card -->
-                    <!-- Renew Subscription Button -->
-                    <div class="profile-card">
-                        <h3 class="section-title"><i class="fas fa-sync-alt"></i> Subscription Management</h3>
+                    <!-- Subscription Management Card -->
+                    <div class="profile-card" id="subscriptionManagementCard">
+                        <h3 class="section-title"><i class="fas fa-id-card-alt"></i> Subscription Management</h3>
 
-                        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 20px;">
-                            <!-- Current Plan Info -->
-                            <div style="flex: 1; min-width: 200px;">
-                                <div
-                                    style="background: var(--card-alt); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                                        <i class="fas fa-crown" style="color: var(--primary); font-size: 18px;"></i>
-                                        <div>
-                                            <div style="font-size: 14px; color: var(--text-light);">Current Plan</div>
-                                            <div style="font-size: 16px; font-weight: 600; color: var(--text);">
-                                                <?php if ($active_subscription): ?>
-                                                    <?php echo htmlspecialchars($active_subscription['plan_title']); ?>
-                                                <?php else: ?>
-                                                    <span style="color: var(--text-light);">No active plan</span>
-                                                <?php endif; ?>
+                        <?php
+                        // Determine subscription state:
+                        // 'active'   — has live subscription
+                        // 'pending'  — has a pending request (no active sub)
+                        // 'inactive' — no active sub, no pending request
+                        if ($active_subscription):
+                            $sub_state = 'active';
+                        elseif ($pending_request):
+                            $sub_state = 'pending';
+                        else:
+                            $sub_state = 'inactive';
+                        endif;
+                        ?>
+
+                        <?php if ($sub_state === 'active'): ?>
+                            <!-- ═══ ACTIVE STATE ═══ -->
+                            <div style="margin-top: 16px;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+                                    <span style="display:inline-flex; align-items:center; gap:6px; background:#d1fae5; color:#065f46; font-size:13px; font-weight:600; padding:5px 14px; border-radius:100px;">
+                                        <i class="fas fa-check-circle"></i> Active
+                                    </span>
+                                </div>
+                                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <div style="background: var(--card-alt); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                                <i class="fas fa-crown" style="color: var(--primary); font-size: 18px;"></i>
+                                                <div>
+                                                    <div style="font-size: 13px; color: var(--text-light);">Current Plan</div>
+                                                    <div style="font-size: 16px; font-weight: 700; color: var(--text);">
+                                                        <?php echo htmlspecialchars($active_subscription['plan_title']); ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <div><i class="far fa-calendar"></i> Expires: <?php echo date('d M Y', strtotime($active_subscription['end_date'])); ?></div>
+                                                <div>
+                                                    <?php
+                                                    $days_left = ceil((strtotime($active_subscription['end_date']) - time()) / (60 * 60 * 24));
+                                                    if ($days_left > 30) {
+                                                        echo "<span style='color: var(--success);'>$days_left days left</span>";
+                                                    } elseif ($days_left > 0) {
+                                                        echo "<span style='color: var(--warning);'>$days_left days left</span>";
+                                                    } else {
+                                                        echo "<span style='color: var(--error);'>Expired</span>";
+                                                    }
+                                                    ?>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-
-                                    <?php if ($active_subscription): ?>
-                                        <div style="display: flex; justify-content: space-between; font-size: 13px;">
-                                            <div>
-                                                <i class="far fa-calendar"></i>
-                                                Expires:
-                                                <?php echo date('d M Y', strtotime($active_subscription['end_date'])); ?>
-                                            </div>
-                                            <div>
-                                                <?php
-                                                $days_left = ceil((strtotime($active_subscription['end_date']) - time()) / (60 * 60 * 24));
-                                                if ($days_left > 0) {
-                                                    echo "<span style='color: var(--success);'>$days_left days left</span>";
-                                                } else {
-                                                    echo "<span style='color: var(--error);'>Expired</span>";
-                                                }
-                                                ?>
-                                            </div>
-                                        </div>
-                                    <?php endif; ?>
+                                    <div style="flex-shrink: 0;">
+                                        <button class="btn green" onclick="openRenewModal()"
+                                            style="padding: 14px 28px; font-size: 15px; min-width: 160px;">
+                                            <i class="fas fa-sync-alt"></i> Renew Plan
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- Renew Button -->
-                            <div style="flex-shrink: 0;">
-                                <button class="btn green" onclick="openRenewModal()"
-                                    style="padding: 14px 28px; font-size: 15px; min-width: 160px;">
-                                    <i class="fas fa-sync-alt"></i> Renew Plan
-                                </button>
+                        <?php elseif ($sub_state === 'pending'): ?>
+                            <!-- ═══ PENDING STATE ═══ -->
+                            <div style="margin-top: 16px;">
+                                <div style="display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 600; padding: 5px 14px; border-radius: 100px; margin-bottom: 16px;">
+                                    <i class="fas fa-clock"></i> Pending Approval
+                                </div>
+                                <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: var(--radius-sm); padding: 20px;">
+                                    <div style="display: flex; align-items: flex-start; gap: 14px;">
+                                        <i class="fas fa-hourglass-half" style="color: #d97706; font-size: 24px; flex-shrink: 0; margin-top: 2px;"></i>
+                                        <div>
+                                            <div style="font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px;">
+                                                Your subscription request is under review
+                                            </div>
+                                            <div style="font-size: 13px; color: var(--text-light); line-height: 1.6;">
+                                                Plan requested: <strong><?php echo htmlspecialchars($pending_request['plan_title']); ?></strong><br>
+                                                Submitted on: <?php echo date('d M Y, h:i A', strtotime($pending_request['created_at'])); ?><br>
+                                                Amount: ₹<?php echo number_format($pending_request['total_amount'], 2); ?> (<?php echo ucfirst($pending_request['duration_type'] ?? 'year'); ?>)
+                                            </div>
+                                            <div style="margin-top: 12px; font-size: 12px; color: #92400e; background: #fef3c7; padding: 8px 12px; border-radius: 6px; display: inline-block;">
+                                                <i class="fas fa-info-circle"></i> Your account will be activated once the admin approves your request.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+
+                        <?php else: ?>
+                            <!-- ═══ INACTIVE STATE ═══ -->
+                            <div style="margin-top: 16px;">
+                                <div style="display: inline-flex; align-items: center; gap: 6px; background: #fee2e2; color: #991b1b; font-size: 13px; font-weight: 600; padding: 5px 14px; border-radius: 100px; margin-bottom: 16px;">
+                                    <i class="fas fa-times-circle"></i> Inactive
+                                </div>
+                                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <div style="background: var(--card-alt); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                                            <?php if ($last_subscription): ?>
+                                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                                                    <i class="fas fa-crown" style="color: var(--text-light); font-size: 18px;"></i>
+                                                    <div>
+                                                        <div style="font-size: 13px; color: var(--text-light);">Last Plan</div>
+                                                        <div style="font-size: 15px; font-weight: 600; color: var(--text-light);">
+                                                            <?php echo htmlspecialchars($last_subscription['plan_title']); ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style="font-size: 12px; color: var(--text-light);">
+                                                    <i class="far fa-calendar-times"></i> Ended: <?php echo date('d M Y', strtotime($last_subscription['end_date'])); ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <div style="text-align: center; padding: 12px 0; color: var(--text-light);">
+                                                    <i class="fas fa-box-open" style="font-size: 32px; margin-bottom: 10px; opacity: 0.5;"></i>
+                                                    <p style="font-size: 14px;">No subscription history found.</p>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                    <div style="flex-shrink: 0;">
+                                        <button class="btn green" onclick="openRenewModal()"
+                                            style="padding: 14px 28px; font-size: 15px; min-width: 160px;">
+                                            <i class="fas fa-plus-circle"></i> Request Subscription
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Renew Subscription Modal -->
                     <div class="modal" id="renewModal">
                         <div class="modal-content" style="max-width: 600px;">
                             <div class="modal-header">
-                                <h3 class="modal-title"><i class="fas fa-sync-alt"></i> Renew Your Subscription</h3>
+                                <h3 class="modal-title">
+                                    <?php if ($sub_state === 'inactive'): ?>
+                                        <i class="fas fa-plus-circle"></i> Request a Subscription
+                                    <?php else: ?>
+                                        <i class="fas fa-sync-alt"></i> Renew Your Subscription
+                                    <?php endif; ?>
+                                </h3>
                                 <button class="modal-close" onclick="closeRenewModal()">&times;</button>
                             </div>
                             <div style="padding: 24px;">
@@ -3517,7 +3636,8 @@ $hasPaymentDetails = !empty($paymentDetails) && !isset($paymentDetails['error'])
                                             </div>
                                             <button type="submit" class="btn btn-primary" id="modalRenewBtn" disabled
                                                 style="margin-top: 20px; width: 100%;">
-                                                <i class="fas fa-arrow-right"></i> Submit Renewal Request
+                                                <i class="fas fa-arrow-right"></i>
+                                                <?php echo ($sub_state === 'inactive') ? 'Submit Subscription Request' : 'Submit Renewal Request'; ?>
                                             </button>
                                         </div>
                                     </form>

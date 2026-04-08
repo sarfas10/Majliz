@@ -75,6 +75,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
+/* --- AJAX handler for manual subscription reset --- */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reset_subscription') {
+    header('Content-Type: application/json');
+
+    $userId    = isset($_POST['user_id'])   ? intval($_POST['user_id'])           : 0;
+    $expireOn  = isset($_POST['expire_on']) ? trim($_POST['expire_on'])            : date('Y-m-d');
+
+    if ($userId <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Invalid user ID']);
+        exit();
+    }
+
+    // Validate date format
+    $d = DateTime::createFromFormat('Y-m-d', $expireOn);
+    if (!$d || $d->format('Y-m-d') !== $expireOn) {
+        echo json_encode(['success' => false, 'message' => 'Invalid date format']);
+        exit();
+    }
+
+    $db_result = get_db_connection();
+    if (isset($db_result['error'])) {
+        echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+        exit();
+    }
+    $conn = $db_result['conn'];
+
+    // Update active subscription: set end_date to the given date and status to 'inactive'
+    $stmt = $conn->prepare(
+        "UPDATE subscriptions SET end_date = ?, status = 'inactive' 
+         WHERE mahal_id = ? AND status = 'active'"
+    );
+    if ($stmt) {
+        $stmt->bind_param("si", $expireOn, $userId);
+        $stmt->execute();
+        $affected = $stmt->affected_rows;
+        $stmt->close();
+
+        if ($affected > 0) {
+            // Also sync the register.status to 'inactive' immediately
+            $updStatus = $conn->prepare("UPDATE register SET status = 'inactive' WHERE id = ?");
+            if ($updStatus) {
+                $updStatus->bind_param("i", $userId);
+                $updStatus->execute();
+                $updStatus->close();
+            }
+
+            echo json_encode(['success' => true, 'message' => 'Subscription reset to inactive successfully.']);
+        } else {
+            // No active subscription found — check if there's any sub at all
+            $chk = $conn->prepare("SELECT COUNT(*) as cnt FROM subscriptions WHERE mahal_id = ?");
+            $chk->bind_param("i", $userId);
+            $chk->execute();
+            $chkRes = $chk->get_result()->fetch_assoc();
+            $chk->close();
+            if ($chkRes['cnt'] > 0) {
+                echo json_encode(['success' => false, 'message' => 'No active subscription found for this mahal (may already be inactive).']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'This mahal has no subscription record to reset.']);
+            }
+        }
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $conn->error]);
+    }
+
+    $conn->close();
+    exit();
+}
+
 // Include the centralized database connection
 require_once 'db_connection.php';
 
@@ -1126,11 +1194,12 @@ $currentView = $_GET['view'] ?? 'dashboard';
             <?php elseif ($currentView === 'payments'): ?>
                 <?php
                 $reqQuery = "
-                    SELECT sr.*, r.name as mahal_name, r.registration_no, p.title as plan_title 
+                    SELECT sr.*, r.name as mahal_name, r.registration_no, p.title as plan_title,
+                           (SELECT COUNT(*) FROM subscriptions s2 WHERE s2.mahal_id = sr.mahal_id AND s2.status IN ('active','inactive','expired')) as sub_history_count
                     FROM subscription_requests sr
                     JOIN register r ON sr.mahal_id = r.id
                     JOIN plans p ON sr.plan_id = p.id
-                    ORDER BY sr.created_at DESC
+                    ORDER BY FIELD(sr.status, 'pending', 'approved', 'rejected'), sr.created_at DESC
                 ";
                 $reqResult = $conn->query($reqQuery);
                 $requests = [];
@@ -1141,7 +1210,17 @@ $currentView = $_GET['view'] ?? 'dashboard';
                 }
                 ?>
                 <div class="bg-white rounded-xl border p-6">
-                    <h3 class="text-lg font-semibold mb-6">Subscription Requests</h3>
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold">Subscription Requests</h3>
+                        <?php
+                        $pendingCountAll = count(array_filter($requests, fn($r) => $r['status'] === 'pending'));
+                        if ($pendingCountAll > 0):
+                        ?>
+                            <span class="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-semibold rounded-full">
+                                <i class="bi bi-clock-fill"></i> <?= $pendingCountAll ?> Pending
+                            </span>
+                        <?php endif; ?>
+                    </div>
 
                     <?php if (empty($requests)): ?>
                         <div class="text-center py-12">
@@ -1149,41 +1228,52 @@ $currentView = $_GET['view'] ?? 'dashboard';
                             <p class="text-gray-500 mt-4">No pending requests</p>
                         </div>
                     <?php else: ?>
+
                         <div class="overflow-x-auto">
                             <table class="w-full text-left border-collapse">
                                 <thead>
                                     <tr class="border-b text-gray-500 text-sm">
                                         <th class="p-4 font-medium">Date</th>
                                         <th class="p-4 font-medium">Mahal Name</th>
+                                        <th class="p-4 font-medium">Type</th>
                                         <th class="p-4 font-medium">Plan</th>
                                         <th class="p-4 font-medium">Duration</th>
-                                        <th class="p-4 font-medium">Total Amount</th>
+                                        <th class="p-4 font-medium">Amount</th>
                                         <th class="p-4 font-medium">Status</th>
                                         <th class="p-4 font-medium">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($requests as $req): ?>
-                                        <tr class="border-b last:border-0 hover:bg-gray-50">
-                                            <td class="p-4 text-sm"><?= date('M d, Y', strtotime($req['created_at'])) ?></td>
+                                        <?php
+                                        $st = $req['status'];
+                                        $stClass = 'bg-gray-100 text-gray-600';
+                                        if ($st == 'pending') $stClass = 'bg-yellow-100 text-yellow-800';
+                                        if ($st == 'approved') $stClass = 'bg-green-100 text-green-800';
+                                        if ($st == 'rejected') $stClass = 'bg-red-100 text-red-800';
+                                        $isNew = ($req['sub_history_count'] == 0);
+                                        ?>
+                                        <tr class="border-b last:border-0 hover:bg-gray-50 <?= ($st === 'pending') ? 'bg-yellow-50' : '' ?>">
+                                            <td class="p-4 text-sm text-gray-600"><?= date('d M Y', strtotime($req['created_at'])) ?></td>
                                             <td class="p-4">
                                                 <div class="font-medium text-gray-900"><?= s($req['mahal_name']) ?></div>
                                                 <div class="text-xs text-gray-500"><?= s($req['registration_no']) ?></div>
+                                            </td>
+                                            <td class="p-4">
+                                                <?php if ($isNew): ?>
+                                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                                                        <i class="bi bi-star-fill"></i> New
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                                                        <i class="bi bi-arrow-repeat"></i> Renewal
+                                                    </span>
+                                                <?php endif; ?>
                                             </td>
                                             <td class="p-4 text-sm text-gray-700"><?= s($req['plan_title']) ?></td>
                                             <td class="p-4 text-sm"><?= ucfirst($req['duration_type'] ?? 'year') ?></td>
                                             <td class="p-4 font-medium">₹<?= number_format($req['total_amount'], 2) ?></td>
                                             <td class="p-4">
-                                                <?php
-                                                $st = $req['status'];
-                                                $stClass = 'bg-gray-100 text-gray-600';
-                                                if ($st == 'pending')
-                                                    $stClass = 'bg-yellow-100 text-yellow-800';
-                                                if ($st == 'approved')
-                                                    $stClass = 'bg-green-100 text-green-800';
-                                                if ($st == 'rejected')
-                                                    $stClass = 'bg-red-100 text-red-800';
-                                                ?>
                                                 <span class="px-2 py-1 rounded text-xs font-medium <?= $stClass ?>">
                                                     <?= ucfirst($st) ?>
                                                 </span>
@@ -1192,13 +1282,14 @@ $currentView = $_GET['view'] ?? 'dashboard';
                                                 <?php if ($st === 'pending'): ?>
                                                     <div class="flex gap-2">
                                                         <button onclick="handleRequest(<?= $req['id'] ?>, 'approve')"
-                                                            class="p-2 bg-green-50 text-green-600 rounded hover:bg-green-100"
+                                                            class="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-semibold rounded hover:bg-green-100 border border-green-200"
                                                             title="Approve">
-                                                            <i class="bi bi-check-lg"></i>
+                                                            <i class="bi bi-check-lg"></i> Approve
                                                         </button>
                                                         <button onclick="handleRequest(<?= $req['id'] ?>, 'reject')"
-                                                            class="p-2 bg-red-50 text-red-600 rounded hover:bg-red-100" title="Reject">
-                                                            <i class="bi bi-x-lg"></i>
+                                                            class="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded hover:bg-red-100 border border-red-200"
+                                                            title="Reject">
+                                                            <i class="bi bi-x-lg"></i> Reject
                                                         </button>
                                                     </div>
                                                 <?php else: ?>
@@ -1271,8 +1362,29 @@ $currentView = $_GET['view'] ?? 'dashboard';
 
             <?php elseif ($currentView === 'users'): ?>
                 <?php
-                // Fetch all users from register table with plan information
-                $usersQuery = "SELECT id, name, email, phone, status, plan, created_at FROM register ORDER BY created_at DESC";
+                // Fetch all users with their active subscription info.
+                // Use a correlated subquery that picks the single most-recent active
+                // subscription per mahal, so EACH MAHAL ALWAYS APPEARS EXACTLY ONCE.
+                $usersQuery = "
+                    SELECT r.id, r.name, r.email, r.phone, r.status, r.plan, r.created_at,
+                           sub.sub_id, sub.sub_end_date, sub.sub_plan_title
+                    FROM register r
+                    LEFT JOIN (
+                        SELECT s.id       AS sub_id,
+                               s.mahal_id,
+                               s.end_date AS sub_end_date,
+                               p.title    AS sub_plan_title
+                        FROM subscriptions s
+                        JOIN plans p ON p.id = s.plan_id
+                        WHERE s.status = 'active'
+                        AND s.id = (
+                            SELECT id FROM subscriptions s2
+                            WHERE s2.mahal_id = s.mahal_id AND s2.status = 'active'
+                            ORDER BY s2.end_date DESC LIMIT 1
+                        )
+                    ) sub ON sub.mahal_id = r.id
+                    ORDER BY r.created_at DESC
+                ";
                 $usersResult = $conn->query($usersQuery);
                 $users = [];
                 if ($usersResult) {
@@ -1301,40 +1413,78 @@ $currentView = $_GET['view'] ?? 'dashboard';
                                 <thead>
                                     <tr class="border-b">
                                         <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Mahal Name</th>
-                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Phone Number</th>
+                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Phone</th>
                                         <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Email</th>
-                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Plan</th>
-                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
+                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Subscription</th>
+                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Account Status</th>
                                         <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Registered</th>
+                                        <th class="text-left py-3 px-4 text-sm font-medium text-gray-700">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($users as $user): ?>
+                                        <?php
+                                        $hasActiveSub = !empty($user['sub_id']);
+                                        $subEndDate   = $user['sub_end_date'] ?? null;
+                                        $subPlanTitle = $user['sub_plan_title'] ?? null;
+                                        $daysLeft     = $hasActiveSub ? ceil((strtotime($subEndDate) - time()) / 86400) : null;
+                                        ?>
                                         <tr class="border-b hover:bg-gray-50 user-row" data-user-id="<?= $user['id'] ?>">
                                             <td class="py-3 px-4 font-medium"><?= s($user['name']) ?></td>
-                                            <td class="py-3 px-4"><?= s($user['phone']) ?></td>
-                                            <td class="py-3 px-4"><?= s($user['email']) ?></td>
+                                            <td class="py-3 px-4 text-sm"><?= s($user['phone']) ?></td>
+                                            <td class="py-3 px-4 text-sm"><?= s($user['email']) ?></td>
+
+                                            <!-- Subscription column -->
                                             <td class="py-3 px-4">
-                                                <?php
-                                                $planName = $user['plan'] ?: 'No Plan';
-                                                $planColor = $user['plan'] ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600';
-                                                ?>
-                                                <span
-                                                    class="px-2 py-1 <?= $planColor ?> text-xs rounded font-medium"><?= s($planName) ?></span>
+                                                <?php if ($hasActiveSub): ?>
+                                                    <div class="flex flex-col gap-1">
+                                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full w-fit">
+                                                            <i class="bi bi-check-circle-fill"></i> Active
+                                                        </span>
+                                                        <span class="text-xs text-gray-600 font-medium"><?= s($subPlanTitle) ?></span>
+                                                        <span class="text-xs <?= ($daysLeft !== null && $daysLeft <= 30) ? 'text-orange-500' : 'text-gray-400' ?>">
+                                                            Expires <?= date('d M Y', strtotime($subEndDate)) ?>
+                                                            <?php if ($daysLeft !== null && $daysLeft <= 30 && $daysLeft > 0): ?>
+                                                                <span class="text-orange-500 font-semibold">(<?= $daysLeft ?>d left)</span>
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs font-semibold rounded-full">
+                                                        <i class="bi bi-dash-circle"></i> None
+                                                    </span>
+                                                <?php endif; ?>
                                             </td>
+
+                                            <!-- Account status dropdown -->
                                             <td class="py-3 px-4">
                                                 <select
                                                     class="status-dropdown px-3 py-1.5 text-xs rounded border-0 font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500 status-<?= strtolower($user['status']) ?>"
                                                     data-user-id="<?= $user['id'] ?>"
                                                     data-current-status="<?= s($user['status']) ?>">
-                                                    <option value="pending" <?= strtolower($user['status']) === 'pending' ? 'selected' : '' ?>>Pending</option>
-                                                    <option value="active" <?= strtolower($user['status']) === 'active' ? 'selected' : '' ?>>Active</option>
-                                                    <option value="inactive" <?= strtolower($user['status']) === 'inactive' ? 'selected' : '' ?>>Inactive</option>
-                                                    <option value="suspended" <?= strtolower($user['status']) === 'suspended' ? 'selected' : '' ?>>Suspended</option>
+                                                    <option value="pending"  <?= strtolower($user['status']) === 'pending'   ? 'selected' : '' ?>>Pending</option>
+                                                    <option value="active"   <?= strtolower($user['status']) === 'active'    ? 'selected' : '' ?>>Active</option>
+                                                    <option value="inactive" <?= strtolower($user['status']) === 'inactive'  ? 'selected' : '' ?>>Inactive</option>
+                                                    <option value="suspended"<?= strtolower($user['status']) === 'suspended' ? 'selected' : '' ?>>Suspended</option>
                                                 </select>
                                             </td>
-                                            <td class="py-3 px-4 text-sm text-gray-600">
-                                                <?= date('M d, Y', strtotime($user['created_at'])) ?>
+
+                                            <td class="py-3 px-4 text-sm text-gray-500">
+                                                <?= date('d M Y', strtotime($user['created_at'])) ?>
+                                            </td>
+
+                                            <!-- Actions column -->
+                                            <td class="py-3 px-4">
+                                                <?php if ($hasActiveSub): ?>
+                                                    <button
+                                                        onclick="openResetSubModal(<?= $user['id'] ?>, '<?= s($user['name']) ?>', '<?= $subEndDate ?>')"
+                                                        class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded hover:bg-orange-100 transition-colors"
+                                                        title="Reset subscription to inactive">
+                                                        <i class="bi bi-calendar-x"></i> Reset Sub
+                                                    </button>
+                                                <?php else: ?>
+                                                    <span class="text-xs text-gray-400 italic">No active sub</span>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1343,6 +1493,178 @@ $currentView = $_GET['view'] ?? 'dashboard';
                         </div>
                     <?php endif; ?>
                 </div>
+
+                <!-- ═══════════════════════════════════════ -->
+                <!-- Reset Subscription Modal               -->
+                <!-- ═══════════════════════════════════════ -->
+                <div id="resetSubModal" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+                    <!-- Backdrop -->
+                    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeResetSubModal()"></div>
+                    <!-- Panel -->
+                    <div class="absolute inset-0 flex items-center justify-center p-4">
+                        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                            <!-- Header -->
+                            <div class="flex items-center justify-between px-6 py-4 bg-orange-50 border-b border-orange-100">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center">
+                                        <i class="bi bi-calendar-x text-orange-600 text-lg"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-900 text-base">Reset Subscription</h3>
+                                        <p class="text-xs text-gray-500" id="resetSubModalSubtitle">Set expiry date for subscription</p>
+                                    </div>
+                                </div>
+                                <button onclick="closeResetSubModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+                                    <i class="bi bi-x-lg text-lg"></i>
+                                </button>
+                            </div>
+
+                            <!-- Body -->
+                            <div class="px-6 py-5">
+                                <input type="hidden" id="resetSubUserId">
+
+                                <!-- Warning notice -->
+                                <div class="mb-5 p-4 rounded-xl bg-amber-50 border border-amber-200 flex gap-3">
+                                    <i class="bi bi-exclamation-triangle-fill text-amber-500 text-lg flex-shrink-0 mt-0.5"></i>
+                                    <div class="text-sm text-amber-800 leading-relaxed">
+                                        This will <strong>immediately expire</strong> the active subscription on the chosen date and mark it as <strong>Inactive</strong>. The mahal will need to submit a new subscription request.
+                                    </div>
+                                </div>
+
+                                <!-- Current expiry info -->
+                                <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-600 flex items-center gap-2">
+                                    <i class="bi bi-calendar3 text-gray-400"></i>
+                                    Current expiry: <strong id="resetSubCurrentExpiry" class="text-gray-800 ml-1">—</strong>
+                                </div>
+
+                                <!-- Date options -->
+                                <div class="space-y-3">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Set Expiry To</label>
+
+                                    <label class="flex items-center gap-3 p-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors has-[:checked]:border-orange-400 has-[:checked]:bg-orange-50">
+                                        <input type="radio" name="resetSubDateOption" value="today" id="resetOptToday" class="accent-orange-500" checked onchange="handleResetDateOption()">
+                                        <div>
+                                            <div class="font-medium text-gray-800 text-sm">Expire Immediately</div>
+                                            <div class="text-xs text-gray-500">Set expiry to today (<?= date('d M Y') ?>)</div>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center gap-3 p-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors has-[:checked]:border-orange-400 has-[:checked]:bg-orange-50">
+                                        <input type="radio" name="resetSubDateOption" value="custom" id="resetOptCustom" class="accent-orange-500" onchange="handleResetDateOption()">
+                                        <div class="flex-1">
+                                            <div class="font-medium text-gray-800 text-sm">Custom Date</div>
+                                            <div class="text-xs text-gray-500">Set a specific past or future date</div>
+                                        </div>
+                                    </label>
+
+                                    <!-- Custom date input (shown when custom selected) -->
+                                    <div id="customDateWrapper" class="hidden pl-4">
+                                        <input type="date" id="resetSubCustomDate"
+                                            class="w-full px-4 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                                            value="<?= date('Y-m-d') ?>"
+                                            max="<?= date('Y-m-d', strtotime('+10 years')) ?>">
+                                        <p class="text-xs text-gray-400 mt-1">The subscription will expire at the end of this date.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Footer -->
+                            <div class="flex gap-3 px-6 py-4 bg-gray-50 border-t border-gray-100">
+                                <button onclick="closeResetSubModal()"
+                                    class="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                                    Cancel
+                                </button>
+                                <button id="confirmResetSubBtn" onclick="confirmResetSubscription()"
+                                    class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                                    <i class="bi bi-calendar-x-fill"></i>
+                                    Reset Subscription
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    // ─── Reset Subscription Modal ───────────────────────────────
+                    function openResetSubModal(userId, name, currentExpiry) {
+                        document.getElementById('resetSubUserId').value = userId;
+                        document.getElementById('resetSubModalSubtitle').textContent = name;
+                        document.getElementById('resetSubCurrentExpiry').textContent =
+                            currentExpiry ? formatDate(currentExpiry) : 'N/A';
+
+                        // Reset to defaults
+                        document.getElementById('resetOptToday').checked = true;
+                        document.getElementById('customDateWrapper').classList.add('hidden');
+                        document.getElementById('resetSubCustomDate').value = '<?= date('Y-m-d') ?>';
+
+                        document.getElementById('resetSubModal').classList.remove('hidden');
+                        document.body.style.overflow = 'hidden';
+                    }
+
+                    function closeResetSubModal() {
+                        document.getElementById('resetSubModal').classList.add('hidden');
+                        document.body.style.overflow = '';
+                    }
+
+                    function handleResetDateOption() {
+                        const isCustom = document.getElementById('resetOptCustom').checked;
+                        document.getElementById('customDateWrapper').classList.toggle('hidden', !isCustom);
+                    }
+
+                    function confirmResetSubscription() {
+                        const userId   = document.getElementById('resetSubUserId').value;
+                        const isCustom = document.getElementById('resetOptCustom').checked;
+                        const expireOn = isCustom
+                            ? document.getElementById('resetSubCustomDate').value
+                            : '<?= date('Y-m-d') ?>';
+
+                        if (!expireOn) {
+                            alert('Please select a date.');
+                            return;
+                        }
+
+                        const btn = document.getElementById('confirmResetSubBtn');
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></span> Processing…';
+
+                        const formData = new FormData();
+                        formData.append('action', 'reset_subscription');
+                        formData.append('user_id', userId);
+                        formData.append('expire_on', expireOn);
+
+                        fetch('', { method: 'POST', body: formData })
+                            .then(r => r.json())
+                            .then(data => {
+                                closeResetSubModal();
+                                if (data.success) {
+                                    showToast('✓ ' + data.message, 'success');
+                                    // Reload after a short delay so the table refreshes
+                                    setTimeout(() => location.reload(), 1200);
+                                } else {
+                                    showToast('✗ ' + data.message, 'error');
+                                }
+                            })
+                            .catch(() => {
+                                closeResetSubModal();
+                                showToast('Network error. Please try again.', 'error');
+                            })
+                            .finally(() => {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="bi bi-calendar-x-fill"></i> Reset Subscription';
+                            });
+                    }
+
+                    function formatDate(dateStr) {
+                        if (!dateStr) return 'N/A';
+                        const d = new Date(dateStr + 'T00:00:00');
+                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    }
+
+                    // Close modal on Escape key
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape') closeResetSubModal();
+                    });
+                </script>
 
                 <style>
                     /* Status dropdown styling */

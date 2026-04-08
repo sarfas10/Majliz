@@ -70,7 +70,7 @@ if ($resM && $resM->num_rows > 0) {
 
         // Determine status
         $today = date('Y-m-d');
-        $status = ($today > $endDate) ? 'expired' : 'active';
+        $status = ($today > $endDate) ? 'inactive' : 'active';
 
         // Insert Subscription
         $insSub = $conn->prepare("INSERT INTO subscriptions (mahal_id, plan_id, start_date, end_date, status, created_at) VALUES (?, ?, ?, ?, ?, ?)");
