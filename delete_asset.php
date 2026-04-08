@@ -1,6 +1,11 @@
 <?php
 // delete_asset.php
 require_once __DIR__ . '/session_bootstrap.php';
+require_once 'auth_restrictions.php';
+if ($is_restricted) {
+    echo json_encode(['success' => false, 'message' => 'Action restricted: No active subscription.']);
+    exit;
+}
 
 // Set header for JSON response
 header('Content-Type: application/json');

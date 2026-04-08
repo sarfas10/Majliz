@@ -25,6 +25,8 @@ if (isset($db_result['error'])) {
 
 $conn = $db_result['conn'];
 
+require_once 'auth_restrictions.php';
+
 // Get logged-in user details (SAME as asset_management.php)
 $user_id = $_SESSION['user_id'];
 
@@ -139,9 +141,13 @@ function create_tables_if_not_exist($conn)
 create_tables_if_not_exist($conn);
 
 /* -------------------- Handle POST actions -------------------- */
-$action = $_POST['action'] ?? null;
+$action = $_POST['action'] ?? '';
 
 if ($action === 'add_class') {
+  if (!empty($is_restricted)) {
+      echo "<script>alert('Action restricted: No active subscription.'); window.location.href='" . $_SERVER['PHP_SELF'] . "';</script>";
+      exit;
+  }
   $class_name = trim($_POST['class_name'] ?? '');
   $division = trim($_POST['division'] ?? '');
 
@@ -169,6 +175,10 @@ if ($action === 'add_class') {
 }
 
 if ($action === 'delete_class') {
+  if (!empty($is_restricted)) {
+      echo "<script>alert('Action restricted: No active subscription.'); window.location.href='" . $_SERVER['PHP_SELF'] . "';</script>";
+      exit;
+  }
   $class_id = intval($_POST['class_id'] ?? 0);
   if ($class_id > 0) {
     $stmt = $conn->prepare("DELETE FROM classes WHERE id = ?");
@@ -1266,6 +1276,13 @@ $conn->close();
         </div>
       </section>
 
+      <?php if (!empty($is_restricted)): ?>
+          <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+              <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+              <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+          </div>
+      <?php endif; ?>
+
       <!-- Stats Section -->
       <div class="stats-grid">
         <div class="stat-card">
@@ -1322,7 +1339,7 @@ $conn->close();
               Refresh
             </button>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addClassModal"
-              style="margin-left: 10px;">
+              style="margin-left: 10px;" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
               <i class="fas fa-plus"></i>
               Add Class
             </button>
@@ -1350,7 +1367,7 @@ $conn->close();
                   <div class="class-card-actions">
                     <button class="action-btn"
                       onclick="event.stopPropagation(); if(confirm('Delete this class and all its students?')) deleteClass(<?= $class['id'] ?>);"
-                      title="Delete Class">
+                      title="Delete Class" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''; ?>>
                       <i class="fas fa-trash"></i>
                     </button>
                   </div>
@@ -1381,12 +1398,14 @@ $conn->close();
               </div>
             <?php endforeach; ?>
 
+            <?php if (empty($is_restricted)): ?>
             <!-- Add Class Card -->
             <div class="add-class-card" data-bs-toggle="modal" data-bs-target="#addClassModal">
               <i class="fas fa-plus-circle"></i>
               <div class="add-class-text">Add New Class</div>
               <div class="add-class-subtext">Click to create a new class</div>
             </div>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </div>

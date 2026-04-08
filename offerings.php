@@ -1,6 +1,7 @@
 <?php
 // offerings.php - Offering Management
 require_once __DIR__ . '/session_bootstrap.php';
+require_once __DIR__ . '/auth_restrictions.php';
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Cache-Control: post-check=0, pre-check=0', false);
@@ -937,11 +938,18 @@ $conn->close();
             </button>
             <div class="page-title"><i class="fas fa-hand-holding-heart"></i> Offerings Management</div>
             <div class="top-actions">
-                <button class="btn btn-primary" onclick="openModal()">
+                <button class="btn btn-primary" onclick="openModal()" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted: No active subscription"' : ''; ?>>
                     <i class="fas fa-plus"></i> Add Offering
                 </button>
             </div>
         </div>
+        
+        <?php if ($is_restricted): ?>
+            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+                <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+                <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+            </div>
+        <?php endif; ?>
 
         <div class="container">
             <!-- Filter Bar -->
@@ -991,7 +999,7 @@ $conn->close();
                         </thead>
                         <tbody id="offeringsBody">
                             <tr>
-                                <td colspan="8" class="empty-state"><i class="fas fa-spinner fa-spin"></i><br>Loading…
+                                <td colspan="10" class="empty-state"><i class="fas fa-spinner fa-spin"></i><br>Loading…
                                 </td>
                             </tr>
                         </tbody>
@@ -1162,6 +1170,7 @@ $conn->close();
     </div>
 
     <script>
+        const IS_RESTRICTED = <?php echo isset($is_restricted) && $is_restricted ? 'true' : 'false'; ?>;
         let allOfferings = [];
         let offererType = 'nonmember';
         let deleteTargetId = null;
@@ -1242,14 +1251,14 @@ $conn->close();
             <td style="max-width:180px;color:var(--text-light);font-size:13px;">${esc(o.notes || o.description || '—')}</td>
             <td>
                 <div class="action-group">
-                    <button class="btn btn-secondary btn-sm btn-icon" title="Edit" onclick="editOffering(${o.id})">
+                    <button class="btn btn-secondary btn-sm btn-icon" title="Edit" onclick="editOffering(${o.id})" ${IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         <i class="fas fa-edit"></i>
                     </button>
                     ${o.status === 'pending' ? `
-                    <button class="btn btn-success btn-sm" title="Insert to Transactions" onclick="openTxModal(${o.id})" style="font-size:12px;padding:7px 10px;">
+                    <button class="btn btn-success btn-sm" title="Insert to Transactions" onclick="openTxModal(${o.id})" style="font-size:12px;padding:7px 10px;" ${IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         <i class="fas fa-receipt"></i> Record
                     </button>` : ''}
-                    <button class="btn btn-danger btn-sm btn-icon" title="Delete" onclick="askDelete(${o.id})">
+                    <button class="btn btn-danger btn-sm btn-icon" title="Delete" onclick="askDelete(${o.id})" ${IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -1275,6 +1284,7 @@ $conn->close();
 
         // ── Modal ─────────────────────────────────────────────────────
         function openModal(data = null) {
+            if (IS_RESTRICTED) return;
             document.getElementById('editId').value = data ? data.id : '';
             document.getElementById('modalTitle').textContent = data ? 'Edit Offering' : 'Add Offering';
             document.getElementById('offeringType').value = data ? data.offering_type : 'Money';
@@ -1386,6 +1396,7 @@ $conn->close();
 
         // ── Edit ─────────────────────────────────────────────────────
         function editOffering(id) {
+            if (IS_RESTRICTED) return;
             const o = allOfferings.find(x => x.id == id);
             if (o) openModal(o);
         }
@@ -1395,6 +1406,7 @@ $conn->close();
         let txTargetOffering = null;
 
         function openTxModal(id) {
+            if (IS_RESTRICTED) return;
             const o = allOfferings.find(x => x.id == id);
             if (!o) return;
             txTargetId = id;
@@ -1473,6 +1485,7 @@ $conn->close();
 
         // ── Delete ────────────────────────────────────────────────────
         function askDelete(id) {
+            if (IS_RESTRICTED) return;
             deleteTargetId = id;
             document.getElementById('deleteBackdrop').classList.add('open');
         }

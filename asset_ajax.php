@@ -1,6 +1,11 @@
 <?php
 //asset_ajax.php
 require_once __DIR__ . '/session_bootstrap.php';
+require_once 'auth_restrictions.php';
+if ($is_restricted) {
+    echo json_encode(['success' => false, 'message' => 'Action restricted: No active subscription.']);
+    exit;
+}
 require_once 'db_connection.php';
 
 if (!isset($_SESSION['user_id'])) {

@@ -24,6 +24,8 @@ if (isset($db['error'])) {
 /** @var mysqli $conn */
 $conn = $db['conn'];
 
+require_once 'auth_restrictions.php';
+
 /* This user represents the respective Mahal (register.id) */
 $mahal_id = (int) $_SESSION['user_id'];
 
@@ -76,6 +78,10 @@ if ($resSahakari && $resSahakari->num_rows === 0) {
 
 /* --- Handle reject action (GET) --- */
 if (isset($_GET['reject_id']) && ctype_digit($_GET['reject_id'])) {
+  if (!empty($is_restricted)) {
+      header("Location: certificate.php?error=restricted");
+      exit();
+  }
   $reject_id = (int) $_GET['reject_id'];
 
   // Check if it's a regular member request
@@ -124,6 +130,10 @@ if (isset($_GET['reject_id']) && ctype_digit($_GET['reject_id'])) {
 
 /* --- Handle delete action for rejected/completed (GET) --- */
 if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
+  if (!empty($is_restricted)) {
+      header("Location: certificate.php?error=restricted");
+      exit();
+  }
   $delete_id = (int) $_GET['delete_id'];
 
   // Try deleting regular member request
@@ -1072,6 +1082,13 @@ function h($s)
         </div>
       </section>
 
+      <?php if (!empty($is_restricted)): ?>
+          <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+              <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+              <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+          </div>
+      <?php endif; ?>
+
       <div class="container">
         <div class="page-header">
           <div class="actions"></div>
@@ -1241,21 +1258,21 @@ function h($s)
                         <div class="actions">
                           <?php if ($status === 'pending'): ?>
                             <?php if ($issueUrl !== '#'): ?>
-                              <a href="<?php echo h($issueUrl); ?>" class="icon-btn issue-icon" title="Issue Certificate">
+                              <a href="<?php echo (!empty($is_restricted) ? '#' : h($issueUrl)); ?>" class="icon-btn issue-icon" title="Issue Certificate" <?php echo !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" onclick="return false;"' : ''; ?>>
                                 <i class="fas fa-check"></i>
                               </a>
                             <?php endif; ?>
 
-                            <a href="certificate.php?reject_id=<?php echo (int) $r['id']; ?>" class="icon-btn reject-icon"
-                              title="Reject Request" onclick="return confirm('Reject this request?');">
+                            <a href="<?php echo (!empty($is_restricted) ? '#' : 'certificate.php?reject_id=' . (int) $r['id']); ?>" class="icon-btn reject-icon"
+                              title="Reject Request" <?php echo !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" onclick="return false;"' : 'onclick="return confirm(\'Reject this request?\');"'; ?>>
                               <i class="fas fa-times"></i>
                             </a>
 
                           <?php elseif ($status === 'rejected'): ?>
 
-                            <a href="certificate.php?delete_id=<?php echo (int) $r['id']; ?>" class="icon-btn delete-icon"
+                            <a href="<?php echo (!empty($is_restricted) ? '#' : 'certificate.php?delete_id=' . (int) $r['id']); ?>" class="icon-btn delete-icon"
                               title="Delete Permanently"
-                              onclick="return confirm('Permanently delete this rejected request?');">
+                              <?php echo !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" onclick="return false;"' : 'onclick="return confirm(\'Permanently delete this rejected request?\');"'; ?>>
                               <i class="fas fa-trash"></i>
                             </a>
 
@@ -1267,14 +1284,14 @@ function h($s)
                             </a>
 
                             <?php if ($issueUrl !== '#'): ?>
-                              <a href="<?php echo h($issueUrl); ?>" class="icon-btn edit-icon" title="Regenerate Certificate">
+                              <a href="<?php echo (!empty($is_restricted) ? '#' : h($issueUrl)); ?>" class="icon-btn edit-icon" title="Regenerate Certificate" <?php echo !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" onclick="return false;"' : ''; ?>>
                                 <i class="fas fa-pen"></i>
                               </a>
                             <?php endif; ?>
 
-                            <a href="certificate.php?delete_id=<?php echo (int) $r['id']; ?>" class="icon-btn delete-icon"
+                            <a href="<?php echo (!empty($is_restricted) ? '#' : 'certificate.php?delete_id=' . (int) $r['id']); ?>" class="icon-btn delete-icon"
                               title="Delete Permanently"
-                              onclick="return confirm('Permanently delete this completed request?');">
+                              <?php echo !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" onclick="return false;"' : 'onclick="return confirm(\'Permanently delete this completed request?\');"'; ?>>
                               <i class="fas fa-trash"></i>
                             </a>
 

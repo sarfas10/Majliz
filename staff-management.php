@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/session_bootstrap.php';
 require_once __DIR__ . '/db_connection.php';
+require_once __DIR__ . '/auth_restrictions.php';
 
 // Enhanced error reporting for debugging
 ini_set('display_errors', '1');
@@ -98,6 +99,11 @@ $conn->query($createPayments);
 
 /* --- API router --- */
 $action = isset($_REQUEST['action']) ? trim($_REQUEST['action']) : null;
+
+if (!empty($is_restricted) && in_array($action, ['create', 'update', 'delete', 'upload_doc', 'add_payment', 'delete_doc', 'add'])) {
+    send_json(['success' => false, 'message' => 'Action restricted: No active subscription.']);
+}
+
 $mahal_id = intval($_SESSION['user_id']);
 
 if ($action !== null) {
@@ -1737,10 +1743,17 @@ function h($s)
         </div>
       </section>
 
+      <?php if (!empty($is_restricted)): ?>
+          <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+              <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+              <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+          </div>
+      <?php endif; ?>
+
       <div class="container">
         <div class="page-header">
           <div class="actions">
-            <button class="btn green" onclick="openAddStaffModal()">
+            <button class="btn green" onclick="openAddStaffModal()" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
               <i class="fas fa-plus"></i>
               Add Staff
             </button>
@@ -2047,6 +2060,8 @@ function h($s)
   <div id="toast" class="toast"></div>
 
   <script>
+    const IS_RESTRICTED = <?php echo !empty($is_restricted) ? 'true' : 'false'; ?>;
+    
     // Sidebar functionality
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -2278,13 +2293,14 @@ function h($s)
                 </td>
                 <td>
                   <div class="action-icons" role="group" aria-label="Actions for ${escapeHtml(staff.name)}">
-                    <button class="icon-btn edit btn-edit" data-id="${staff.id}" title="Edit ${escapeHtml(staff.name)}" type="button">
+                    <button class="icon-btn edit btn-edit" data-id="${staff.id}" title="Edit ${escapeHtml(staff.name)}" type="button" ${IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                       <i class="fas fa-pen"></i>
                     </button>
+                    <!-- History is view-only, allow it to remain enabled -->
                     <button class="icon-btn history btn-history" data-id="${staff.id}" title="Payment history for ${escapeHtml(staff.name)}" type="button">
                       <i class="fas fa-clock-rotate-left"></i>
                     </button>
-                    <button class="icon-btn delete btn-delete" data-id="${staff.id}" title="Delete ${escapeHtml(staff.name)}" type="button">
+                    <button class="icon-btn delete btn-delete" data-id="${staff.id}" title="Delete ${escapeHtml(staff.name)}" type="button" ${IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                       <i class="fas fa-trash-alt"></i>
                     </button>
                   </div>

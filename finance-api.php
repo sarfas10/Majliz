@@ -24,10 +24,12 @@ require_once 'db_connection.php';
 // Get database connection
 $db_result = get_db_connection();
 if (isset($db_result['error'])) {
-    die("Database connection failed: " . $db_result['error']);
+    die(json_encode(['success' => false, 'message' => "Database connection failed: " . $db_result['error']]));
 }
 $conn = $db_result['conn'];
 
+// Evaluate restrictions
+require_once 'auth_restrictions.php';
 /* --------------------------- Schema ensure --------------------------- */
 // NOTE: members and sahakari_members tables are created and managed by 
 // addmember.php and add_sahakari.php respectively.
@@ -214,6 +216,15 @@ function resolve_donor_table(mysqli $conn, int $donor_member_id, int $mahal_id):
 }
 
 $action = $_GET['action'] ?? '';
+
+// Block restricted actions for inactive/pending mahals
+if ($is_restricted) {
+    $restricted_actions = ['save', 'save_bulk', 'bulk_receipt', 'delete'];
+    if (in_array($action, $restricted_actions, true)) {
+        echo json_encode(['success' => false, 'message' => 'Action restricted: No active subscription']);
+        exit();
+    }
+}
 
 /* ------------------- EXPORT transactions to Excel ------------------- */
 if ($action === 'export_excel' && $_SERVER['REQUEST_METHOD'] === 'GET') {

@@ -24,8 +24,7 @@ $conn = $db_result['conn'];
 
 // ENSURE SCHEMA: Make sure transactions table has asset columns
 
-
-
+require_once 'auth_restrictions.php';
 // Get logged-in user details
 $user_id = $_SESSION['user_id'];
 
@@ -234,6 +233,12 @@ function createAssetTablesIfNotExists($conn, $mahal_id_param)
 // Function to handle form submissions
 function handleAssetFormSubmit($conn, $user_id, $mahal_id, $post_data)
 {
+  global $is_restricted;
+  if (!empty($is_restricted)) {
+      echo "<script>alert('Action restricted: No active subscription.');</script>";
+      exit;
+  }
+  
   try {
     switch ($post_data['action']) {
      // Replace the case 'add_asset' section in your handleAssetFormSubmit function with this fixed version:
@@ -2404,6 +2409,13 @@ try {
         </div>
       </section>
 
+      <?php if (!empty($is_restricted)): ?>
+          <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+              <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+              <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+          </div>
+      <?php endif; ?>
+
       <!-- Statistics Cards -->
       <div class="oval-stats-container">
         <div class="oval-stat-card">
@@ -2459,16 +2471,16 @@ try {
           </div>
           <div class="card-body">
             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-              <button class="btn btn-primary" onclick="openModal('addAssetModal')">
+              <button class="btn btn-primary" onclick="openModal('addAssetModal')" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                 <i class="fas fa-plus"></i> Add New Asset
               </button>
-              <button class="btn btn-success" onclick="openModal('scheduleMaintenanceModal')">
+              <button class="btn btn-success" onclick="openModal('scheduleMaintenanceModal')" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                 <i class="fas fa-calendar-plus"></i> Schedule Maintenance
               </button>
-              <button class="btn btn-info" onclick="openModal('bookAssetModal')">
+              <button class="btn btn-info" onclick="openModal('bookAssetModal')" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                 <i class="fas fa-book"></i> Book Asset
               </button>
-              <button class="btn btn-warning" onclick="openModal('addCategoryModal')">
+              <button class="btn btn-warning" onclick="openModal('addCategoryModal')" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                 <i class="fas fa-tag"></i> Add Category
               </button>
             </div>
@@ -2807,10 +2819,10 @@ try {
                           <a href='asset_details.php?id={$asset['id']}' class='btn btn-sm btn-info' title='View Details'>
                             <i class='fas fa-eye'></i>
                           </a>
-                          <button class='btn btn-sm btn-warning' onclick='editAsset({$asset['id']})' title='Edit'>
+                          <button class='btn btn-sm btn-warning' onclick='editAsset({$asset['id']})' title='Edit' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                             <i class='fas fa-edit'></i>
                           </button>
-                          <button class='btn btn-sm btn-danger' onclick='deleteAsset({$asset['id']}, \"{$asset['name']}\")' title='Delete'>
+                          <button class='btn btn-sm btn-danger' onclick='deleteAsset({$asset['id']}, \"{$asset['name']}\")' title='Delete' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                             <i class='fas fa-trash'></i>
                           </button>
                         </td>
@@ -2915,13 +2927,13 @@ try {
                         <td><span class='badge {$status_badge}'>" . ucfirst(str_replace('_', ' ', $maintenance['status'])) . "</span></td>
                         <td>
                           <div style='display: flex; gap: 5px;'>
-                            <button class='btn btn-sm btn-success' onclick='updateMaintenanceStatus({$maintenance['id']}, \"completed\")' title='Mark Complete'>
+                            <button class='btn btn-sm btn-success' onclick='updateMaintenanceStatus({$maintenance['id']}, \"completed\")' title='Mark Complete' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                               <i class='fas fa-check'></i>
                             </button>
-                            <button class='btn btn-sm btn-warning' onclick='updateMaintenanceStatus({$maintenance['id']}, \"in_progress\")' title='Start Progress'>
+                            <button class='btn btn-sm btn-warning' onclick='updateMaintenanceStatus({$maintenance['id']}, \"in_progress\")' title='Start Progress' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                               <i class='fas fa-play'></i>
                             </button>
-                            <button class='btn btn-sm btn-danger' onclick='updateMaintenanceStatus({$maintenance['id']}, \"cancelled\")' title='Cancel'>
+                            <button class='btn btn-sm btn-danger' onclick='updateMaintenanceStatus({$maintenance['id']}, \"cancelled\")' title='Cancel' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                               <i class='fas fa-times'></i>
                             </button>
                           </div>
@@ -2999,10 +3011,10 @@ try {
                       if ($booking['status'] == 'pending') {
                         $actions = "
                           <div style='display: flex; gap: 5px;'>
-                            <button class='btn btn-sm btn-success' onclick='updateBookingStatus({$booking['id']}, \"approved\")' title='Approve'>
+                            <button class='btn btn-sm btn-success' onclick='updateBookingStatus({$booking['id']}, \"approved\")' title='Approve' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                               <i class='fas fa-check'></i>
                             </button>
-                            <button class='btn btn-sm btn-danger' onclick='updateBookingStatus({$booking['id']}, \"rejected\")' title='Reject'>
+                            <button class='btn btn-sm btn-danger' onclick='updateBookingStatus({$booking['id']}, \"rejected\")' title='Reject' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                               <i class='fas fa-times'></i>
                             </button>
                           </div>
@@ -3040,7 +3052,7 @@ try {
         <div class="card">
           <div class="card-header">
             <h3><i class="fas fa-tags"></i> Asset Categories</h3>
-            <button class="btn btn-warning" onclick="openModal('addCategoryModal')">
+            <button class="btn btn-warning" onclick="openModal('addCategoryModal')" <?php echo !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
               <i class="fas fa-plus"></i> Add Category
             </button>
           </div>
@@ -3073,10 +3085,10 @@ try {
                         <td>{$category['asset_count']}</td>
                         <td>₹" . number_format($category['total_value'], 2) . "</td>
                         <td>
-                          <button class='btn btn-sm btn-warning' onclick='editCategory({$category['id']})' title='Edit'>
+                          <button class='btn btn-sm btn-warning' onclick='editCategory({$category['id']})' title='Edit' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                             <i class='fas fa-edit'></i>
                           </button>
-                          <button class='btn btn-sm btn-danger' onclick='deleteCategory({$category['id']}, \"{$category['category_name']}\")' title='Delete'>
+                          <button class='btn btn-sm btn-danger' onclick='deleteCategory({$category['id']}, \"{$category['category_name']}\")' title='Delete' " . (!empty($is_restricted) ? "disabled style='opacity: 0.5; cursor: not-allowed;'" : "") . ">
                             <i class='fas fa-trash'></i>
                           </button>
                         </td>

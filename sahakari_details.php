@@ -103,7 +103,9 @@ try {
     }
     $conn = $db_result['conn'];
 
-    // Fetch main sahakari member details
+    require_once 'auth_restrictions.php';
+
+    // Validate the ID and ensure the user can only access their own mahal's members    // Fetch main sahakari member details
     $stmt = $conn->prepare("
         SELECT * FROM sahakari_members 
         WHERE id = ? AND mahal_id = ?
@@ -1120,6 +1122,13 @@ if ($raw_lower === '' || in_array($raw_lower, ['due','pending','0','false'], tru
                     </a>
                 </div>
 
+                <?php if ($is_restricted): ?>
+                    <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+                        <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+                        <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+                    </div>
+                <?php endif; ?>
+
                 <!-- Main Content -->
                 <div class="main-content">
                     <!-- Member Header -->
@@ -1540,17 +1549,17 @@ if ($raw_lower === '' || in_array($raw_lower, ['due','pending','0','false'], tru
                                 </div>
                                 <div class="card-body">
                                     <div class="actions-grid" style="display:grid; gap:0.75rem;">
-                                        <a href="edit_sahakari.php?id=<?php echo (int)$member['id']; ?>" class="btn btn-primary action-btn">
+                                        <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'edit_sahakari.php?id=' . (int)$member['id']; ?>" class="btn btn-primary action-btn" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted"' : ''; ?>>
                                             <i class="fas fa-edit"></i>
                                             Edit Sahakari Member Details
                                         </a>
-                                        <a href="add_sahakari.php" class="btn btn-primary action-btn">
+                                        <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'add_sahakari.php'; ?>" class="btn btn-primary action-btn" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted"' : ''; ?>>
                                             <i class="fas fa-plus"></i>
                                             Add New Sahakari Member
                                         </a>
                                         
                                         <!-- Transfer Family Button -->
-                                        <button type="button" onclick="openTransferModal()" class="btn btn-warning action-btn">
+                                        <button type="button" onclick="openTransferModal()" class="btn btn-warning action-btn" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                                             <i class="fas fa-people-arrows"></i>
                                             Transfer Family to Another Member
                                         </button>
@@ -1558,7 +1567,7 @@ if ($raw_lower === '' || in_array($raw_lower, ['due','pending','0','false'], tru
                                         <form id="deleteSahakariMemberForm" method="POST" action="delete_sahakari_member.php" onsubmit="return confirmDelete();" style="margin:0;">
                                             <input type="hidden" name="member_id" value="<?php echo (int)$member['id']; ?>">
                                             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
-                                            <button type="submit" class="btn btn-danger action-btn">
+                                            <button type="submit" class="btn btn-danger action-btn" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                                                 <i class="fas fa-trash"></i>
                                                 Delete Sahakari Member
                                             </button>

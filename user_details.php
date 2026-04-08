@@ -27,6 +27,8 @@ if (isset($db_result['error'])) {
 
 $conn = $db_result['conn'];
 
+require_once 'auth_restrictions.php';
+
 // Fetch logged-in mahal details
 $user_id = $_SESSION['user_id'];
 $sql = "SELECT name, address, registration_no, email FROM register WHERE id = ?";
@@ -1817,6 +1819,13 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                     </a>
                 </div>
             </div>
+            
+            <?php if ($is_restricted): ?>
+                <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+                    <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Main Content -->
@@ -2218,7 +2227,8 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
 
                                                     <div style="margin-top:8px; display:flex; gap:8px;">
                                                         <a class="btn btn-primary"
-                                                            href="addmember.php?convert=1&from_family_id=<?php echo (int) $family_member['id']; ?>&parent_member_id=<?php echo (int) $member['id']; ?>">
+                                                            href="<?php echo $is_restricted ? 'javascript:void(0)' : 'addmember.php?convert=1&from_family_id=' . (int) $family_member['id'] . '&parent_member_id=' . (int) $member['id']; ?>"
+                                                            <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted: No active subscription"' : ''; ?>>
                                                             <i class="fas fa-user-plus"></i> Convert to Member
                                                         </a>
                                                     </div>
@@ -2395,17 +2405,17 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                         </div>
                         <div class="card-body">
                             <div class="actions-grid" style="display:grid; gap:0.75rem;">
-                                <a href="edit_member.php?id=<?php echo (int) $member['id']; ?>"
-                                    class="btn btn-primary action-btn">
+                                <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'edit_member.php?id=' . (int) $member['id']; ?>"
+                                    class="btn btn-primary action-btn" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted"' : ''; ?>>
                                     <i class="fas fa-edit"></i>
                                     Edit Member Details
                                 </a>
-                                <a href="addmember.php" class="btn btn-primary action-btn">
+                                <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'addmember.php'; ?>" class="btn btn-primary action-btn" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted"' : ''; ?>>
                                     <i class="fas fa-plus"></i>
                                     Add New Member
                                 </a>
 
-                                <button class="btn btn-secondary action-btn" onclick="openTransferModal()">
+                                <button class="btn btn-secondary action-btn" onclick="openTransferModal()" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                                     <i class="fas fa-people-arrows"></i>
                                     Transfer to another family
                                 </button>
@@ -2416,7 +2426,7 @@ if ($raw_lower === '' || in_array($raw_lower, ['due', 'pending', '0', 'false'], 
                                     <input type="hidden" name="member_id" value="<?php echo (int) $member['id']; ?>">
                                     <input type="hidden" name="csrf_token"
                                         value="<?php echo htmlspecialchars($csrf_token); ?>">
-                                    <button type="submit" class="btn btn-danger action-btn">
+                                    <button type="submit" class="btn btn-danger action-btn" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : ''; ?>>
                                         <i class="fas fa-trash"></i>
                                         Delete Member
                                     </button>

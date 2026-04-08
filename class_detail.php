@@ -10,6 +10,9 @@ if (isset($db['error'])) {
     die("DB Connection error: " . htmlspecialchars($db['error']));
 }
 $conn = $db['conn'];
+
+require_once 'auth_restrictions.php';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['check_duplicate'])) {
     header('Content-Type: application/json');
     
@@ -234,6 +237,11 @@ if ($class_id <= 0) {
 $action = $_POST['action'] ?? null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'add_student') {
+    if (!empty($is_restricted)) {
+        $_SESSION['error_message'] = "Action restricted: No active subscription.";
+        header("Location: class_detail.php?class_id=" . $class_id);
+        exit;
+    }
     $member_id = !empty($_POST['member_id']) ? intval($_POST['member_id']) : null;
     $student_name = trim($_POST['student_name'] ?? '');
     $year_of_joining = intval($_POST['year_of_joining'] ?? date('Y'));
@@ -297,6 +305,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'add_student') {
 
 // DELETE STUDENT - PERMANENT DELETE (Replace the existing delete handler)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_student') {
+    if (!empty($is_restricted)) {
+        $_SESSION['error_message'] = "Action restricted: No active subscription.";
+        header("Location: class_detail.php?class_id=" . $class_id);
+        exit;
+    }
     $student_id = intval($_POST['student_id'] ?? 0);
     
     if ($student_id > 0) {
@@ -318,6 +331,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete_student') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'mark_attendance') {
+    if (!empty($is_restricted)) {
+        $_SESSION['error_message'] = "Action restricted: No active subscription.";
+        header("Location: class_detail.php?class_id=" . $class_id);
+        exit;
+    }
     $attendance_date = $_POST['attendance_date'] ?? date('Y-m-d');
     $attendance_data = $_POST['attendance'] ?? [];
     
@@ -351,6 +369,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'mark_attendance') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'add_exam_result') {
+    if (!empty($is_restricted)) {
+        $_SESSION['error_message'] = "Action restricted: No active subscription.";
+        header("Location: class_detail.php?class_id=" . $class_id);
+        exit;
+    }
     $student_id = intval($_POST['student_id'] ?? 0);
     $exam_name = trim($_POST['exam_name'] ?? '');
     $exam_date = !empty($_POST['exam_date']) ? $_POST['exam_date'] : null;
@@ -1864,6 +1887,12 @@ Class Management
     </a>
 </section>
 
+<?php if (!empty($is_restricted)): ?>
+    <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 20px 24px 0 24px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+        <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+        <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+    </div>
+<?php endif; ?>
 
            <!-- Stats Cards -->
 <div class="stats-grid" style="margin-top: 30px;">
@@ -1899,14 +1928,14 @@ Class Management
 <?php endif; ?>
                 <!-- Action Buttons -->
                 <div class="d-flex gap-2 mb-3">
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal" <?= !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : '' ?>>
                         <i class="fas fa-user-plus"></i> Add Student
                     </button>
                     
-                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#markAttendanceModal" <?= empty($students) ? 'disabled' : '' ?>>
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#markAttendanceModal" <?= empty($students) || !empty($is_restricted) ? 'disabled' : '' ?> <?= !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : '' ?>>
                         <i class="fas fa-clipboard-check"></i> Mark Attendance
                     </button>
-                    <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#addExamResultModal" <?= empty($students) ? 'disabled' : '' ?>>
+                    <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#addExamResultModal" <?= empty($students) || !empty($is_restricted) ? 'disabled' : '' ?> <?= !empty($is_restricted) ? 'style="opacity: 0.5; cursor: not-allowed;" title="Action restricted"' : '' ?>>
                         <i class="fas fa-file-alt"></i> Add Exam Result
                     </button>
                 </div>
@@ -1972,7 +2001,7 @@ Class Management
         <button class="icon-btn edit btn-view" onclick="viewStudent(<?= $student['id'] ?>)" title="View <?= htmlspecialchars($student['student_name']) ?>" type="button">
             <i class="fas fa-eye"></i>
         </button>
-        <button class="icon-btn delete" onclick="confirmDelete(<?= $student['id'] ?>, '<?= htmlspecialchars(addslashes($student['student_name'])) ?>')" title="Delete <?= htmlspecialchars($student['student_name']) ?>" type="button">
+        <button class="icon-btn delete" onclick="confirmDelete(<?= $student['id'] ?>, '<?= htmlspecialchars(addslashes($student['student_name'])) ?>')" title="Delete <?= htmlspecialchars($student['student_name']) ?>" type="button" <?= !empty($is_restricted) ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : '' ?>>
             <i class="fas fa-trash-alt"></i>
         </button>
     </div>

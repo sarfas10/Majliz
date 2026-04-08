@@ -13,6 +13,12 @@ $conn = $db['conn'];
 
 $user_id = (int)$_SESSION['user_id'];
 
+require_once 'auth_restrictions.php';
+if (!empty($is_restricted)) {
+    echo "<script>alert('Action restricted: No active subscription.'); window.location.href='certificate.php';</script>";
+    exit();
+}
+
 /* ---------- HANDLE SAVE CHANGES (POST BACK TO SAME FILE) ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_changes'])) {
     $request_id = isset($_POST['request_id']) && ctype_digit((string)$_POST['request_id'])

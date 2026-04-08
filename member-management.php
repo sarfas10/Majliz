@@ -27,6 +27,8 @@ if (isset($db_result['error'])) {
 $conn = $db_result['conn'];
 $mahal_id = (int) ($_SESSION['user_id'] ?? 0);
 
+require_once 'auth_restrictions.php';
+
 // Fetch logged-in mahal details for sidebar
 $user_id = $_SESSION['user_id'];
 $sql_mahal = "SELECT name, address, registration_no, email FROM register WHERE id = ?";
@@ -1233,13 +1235,19 @@ $conn->close();
       </section>
 
       <div class="container">
+        <?php if ($is_restricted): ?>
+            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+                <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+                <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+            </div>
+        <?php endif; ?>
         <div class="page-header">
           <div class="actions">
-            <a href="addmember.php" class="btn green">
+            <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'addmember.php'; ?>" class="btn green" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted: No active subscription"' : ''; ?>>
               <i class="fas fa-plus"></i>
               Add Member
             </a>
-            <a href="add_sahakari.php" class="btn green">
+            <a href="<?php echo $is_restricted ? 'javascript:void(0)' : 'add_sahakari.php'; ?>" class="btn green" <?php echo $is_restricted ? 'style="opacity: 0.5; pointer-events: none;" title="Action restricted: No active subscription"' : ''; ?>>
               <i class="fas fa-plus"></i>
               Add Sahakari Member
             </a>

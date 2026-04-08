@@ -57,6 +57,7 @@ if ($custom_dues_result) {
 }
 $custom_dues_json = json_encode($custom_dues_categories);
 
+require_once 'auth_restrictions.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1499,15 +1500,22 @@ $custom_dues_json = json_encode($custom_dues_categories);
                     </div>
                 </div>
 
+                <?php if ($is_restricted): ?>
+                    <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; display: flex; align-items: center; gap: 12px;">
+                        <i class="fas fa-exclamation-triangle" style="color: #f59e0b; font-size: 20px;"></i>
+                        <span style="color: #92400e; font-size: 14px; font-weight: 500;"><?php echo $restriction_message; ?></span>
+                    </div>
+                <?php endif; ?>
+
                 <!-- Page Header -->
                 <div class="page-header">
                     <div class="actions">
-                        <button class="btn green" onclick="openModal()">
+                        <button class="btn green" onclick="openModal()" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted: No active subscription"' : ''; ?>>
                             <i class="fas fa-plus"></i>
                             New Entry
                         </button>
 
-                        <button class="btn blue" onclick="openBulkModal()">
+                        <button class="btn blue" onclick="openBulkModal()" <?php echo $is_restricted ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted: No active subscription"' : ''; ?>>
                             <i class="fas fa-layer-group"></i>
                             Bulk Transact
                         </button>
@@ -1834,6 +1842,9 @@ $custom_dues_json = json_encode($custom_dues_categories);
     </div>
 
     <script>
+        // Store restriction status in JS for dynamic UI elements
+        const IS_RESTRICTED = <?php echo $is_restricted ? 'true' : 'false'; ?>;
+        
         // Sidebar functionality
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
@@ -3205,6 +3216,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 }
 
                 if (showActions) {
+                    const disabledAttr = IS_RESTRICTED ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="Action restricted: No active subscription"' : '';
                     return `
             <tr>
                 ${td('Receipt No', receiptNo)}
@@ -3217,7 +3229,7 @@ $custom_dues_json = json_encode($custom_dues_categories);
                 ${td('Donor', donorColumn)}
                 ${td('Action', `
                     <button class="action-btn" onclick="openReceipt(${t.id})" title="View Receipt">🧾</button>
-                    <button class="action-btn" onclick="deleteTransaction(${t.id})" title="Delete">🗑️</button>
+                    <button class="action-btn" onclick="deleteTransaction(${t.id})" ${disabledAttr} title="${IS_RESTRICTED ? 'Action restricted' : 'Delete'}">🗑️</button>
                 `)}
             </tr>`;
                 } else {

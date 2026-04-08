@@ -15,6 +15,12 @@ if (isset($db['error'])) die($db['error']);
 /** @var mysqli $conn */
 $conn = $db['conn'];
 
+require_once 'auth_restrictions.php';
+if (!empty($is_restricted)) {
+    echo "<script>alert('Action restricted: No active subscription.'); window.location.href='certificate.php';</script>";
+    exit();
+}
+
 /* --- handle SAVE CHANGES postback --- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_changes'])) {
     $request_id = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
