@@ -189,7 +189,7 @@ foreach ($mahals as $m) {
     $cnt = $conn->prepare("
         SELECT COUNT(*) AS c 
         FROM members 
-        WHERE mahal_id = ? AND monthly_fee > 0 AND status NOT IN ('death','terminate')
+        WHERE mahal_id = ? AND monthly_fee > 0 AND (status IS NULL OR LOWER(TRIM(status)) NOT IN ('death','terminate','deceased','terminated'))
     ");
     if (!$cnt) {
         $results[] = [
@@ -210,7 +210,7 @@ foreach ($mahals as $m) {
     $cntS = $conn->prepare("
         SELECT COUNT(*) AS c 
         FROM sahakari_members 
-        WHERE mahal_id = ? AND monthly_fee > 0 AND status NOT IN ('death','terminate')
+        WHERE mahal_id = ? AND monthly_fee > 0 AND (status IS NULL OR LOWER(TRIM(status)) NOT IN ('death','terminate','deceased','terminated'))
     ");
     if (!$cntS) {
         $results[] = [
@@ -233,7 +233,7 @@ foreach ($mahals as $m) {
     $membersQ = $conn->prepare("
         SELECT id, monthly_fee, monthly_fee_adv
         FROM members
-        WHERE mahal_id = ? AND monthly_fee > 0 AND status NOT IN ('death','terminate')
+        WHERE mahal_id = ? AND monthly_fee > 0 AND (status IS NULL OR LOWER(TRIM(status)) NOT IN ('death','terminate','deceased','terminated'))
     ");
     if (!$membersQ) {
         $results[] = [
@@ -258,7 +258,7 @@ foreach ($mahals as $m) {
     $sahQ = $conn->prepare("
         SELECT id, monthly_fee, monthly_fee_adv
         FROM sahakari_members
-        WHERE mahal_id = ? AND monthly_fee > 0 AND status NOT IN ('death','terminate')
+        WHERE mahal_id = ? AND monthly_fee > 0 AND (status IS NULL OR LOWER(TRIM(status)) NOT IN ('death','terminate','deceased','terminated'))
     ");
     if (!$sahQ) {
         $results[] = [
